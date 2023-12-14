@@ -102,11 +102,11 @@ CFLAGS += \
   -Wunreachable-code \
   -Wcast-align \
   -Wcast-function-type \
-  -Wcast-qual \
   -Wnull-dereference \
   -Wuninitialized \
   -Wunused \
   -Wredundant-decls
+  # -Wcast-qual \
 
 # conversion is too strict for most mcu driver, may be disable sign/int/arith-conversion
 #  -Wconversion
