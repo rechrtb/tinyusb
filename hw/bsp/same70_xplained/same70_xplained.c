@@ -101,7 +101,13 @@ void board_init(void)
 //--------------------------------------------------------------------+
 void USBHS_Handler(void)
 {
+#if CFG_TUD_ENABLED
   tud_int_handler(0);
+#endif
+
+#if CFG_TUH_ENABLED
+  tuh_int_handler(0);
+#endif
 }
 
 //--------------------------------------------------------------------+
