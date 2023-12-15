@@ -33,11 +33,14 @@
 //--------------------------------------------------------------------+
 // MACRO CONSTANT TYPEDEF PROTYPES
 //--------------------------------------------------------------------+
-void led_blinking_task(void);
 
 // from msc_app.c
 extern bool msc_app_init(void);
 extern void msc_app_task(void);
+
+extern void board_usb_enable(bool state);
+extern void board_usb_set_host(bool state);
+extern bool board_usb_detect(void);
 
 /*------------- MAIN -------------*/
 int main(void)
@@ -45,6 +48,8 @@ int main(void)
   board_init();
 
   printf("TinyUSB Host MassStorage Explorer Example\r\n");
+
+  board_usb_enable(true);
 
   // init host stack on configured roothub port
   tuh_init(BOARD_TUH_RHPORT);
@@ -54,9 +59,7 @@ int main(void)
   {
     // tinyusb host task
     tuh_task();
-
     msc_app_task();
-    led_blinking_task();
   }
 
   return 0;
@@ -74,22 +77,4 @@ void tuh_mount_cb(uint8_t dev_addr)
 void tuh_umount_cb(uint8_t dev_addr)
 {
   (void) dev_addr;
-}
-
-//--------------------------------------------------------------------+
-// Blinking Task
-//--------------------------------------------------------------------+
-void led_blinking_task(void)
-{
-  const uint32_t interval_ms = 1000;
-  static uint32_t start_ms = 0;
-
-  static bool led_state = false;
-
-  // Blink every interval ms
-  if ( board_millis() - start_ms < interval_ms) return; // not enough time
-  start_ms += interval_ms;
-
-  board_led_write(led_state);
-  led_state = 1 - led_state; // toggle
 }
