@@ -64,6 +64,7 @@ void board_init(void)
   hri_wdt_set_MR_WDDIS_bit(WDT);
 
   _pmc_enable_periph_clock(ID_PIOC);
+
   // UsbPowerSwitchPin
   gpio_set_pin_level(UsbPowerSwitchPin, false);
   gpio_set_pin_direction(UsbPowerSwitchPin, GPIO_DIRECTION_OUT);
@@ -92,9 +93,9 @@ void board_init(void)
   SysTick_Config(CONF_CPU_FREQUENCY / 1000);
 #endif
 
-  // Enable USB clock
+//// USB_HOST_INSTANCE_CLOCK_init
+  hri_pmc_write_SCER_reg(PMC, PMC_SCER_USBCLK);
   _pmc_enable_periph_clock(ID_USBHS);
-
 }
 
 //--------------------------------------------------------------------+
@@ -106,9 +107,9 @@ void USBHS_Handler(void)
   tud_int_handler(0);
 #endif
 
-// #if CFG_TUH_ENABLED
-//   tuh_int_handler(0);
-// #endif
+#if CFG_TUH_ENABLED
+  tuh_int_handler(0);
+#endif
 }
 
 //--------------------------------------------------------------------+
@@ -128,6 +129,10 @@ bool board_usb_detect(void)
 void board_usb_enable(bool state)
 {
   gpio_set_pin_level(UsbPowerSwitchPin, state);
+}
+
+void board_led_write(bool state)
+{
 }
 
 int board_uart_read(uint8_t* buf, int len)
