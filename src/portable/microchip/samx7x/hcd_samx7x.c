@@ -45,100 +45,6 @@ static void hcd_reset_pipes(uint8_t rhport)
 	// TODO: implement
 }
 
-static void hcd_enable_sof_int(uint8_t rhport)
-{
-	// TODO: implement and fint where used
-	USB_REG->HSTIER |= HSTIMR_HSOFIE;
-}
-
-static void hcd_handle_sof(uint8_t rhport)
-{
-	// TODO: check if one use of handling SOF interrupts
-	// is to correctly implement hcd_frame_number on high speed, which seems to be
-	// used for computing time measurement in milliseconds on non-OS builds
-}
-
-static void hcd_handle_pipe(uint8_t rhport)
-{
-
-}
-
-static void hcd_handle_dma(uint8_t rhport)
-{
-
-}
-
-static void hcd_handle_rh_change(uint8_t rhport, uint32_t isr)
-{
-	uint32_t imr = USB_REG->HSTIMR;
-
-	if (isr & imr & HSTISR_DCONNI)
-	{
-		// Enable disconnection interrupt
-		USB_REG->HSTIDR |= HSTISR_DCONNI;
-		USB_REG->HSTICR |= HSTISR_DDISCI;
-		USB_REG->HSTIER |= HSTISR_DDISCI;
-
-		// /* Enable SOF */
-		// USB_REG->CTRL |= HSTCTRL_SOFE;
-
-		USB_REG->CTRL |= HSTCTRL_RESET;
-	}
-
-
-
-
-	if ((isr & HSTISR_HWUPI) && (imr & HSTISR_DCONNI))
-	{
-		// Check USB clock ready
-		while (!(USB_REG->SR & SR_CLKUSABLE));
-
-		// Unfreeze the clock
-		USB_REG->CTRL &= ~CTRL_FRZCLK;
-
-		// Disable HWUPI interrupt	
-		USB_REG->HSTIDR |= HSTIDR_HWUPIEC;
-
-		// Enable VBUS	
-		USB_REG->SFR |= SFR_VBUSRQS;
-	}
-
-	if (isr & (HSTISR_HWUPI | HSTISR_RXRSMI | HSTISR_RSMEDI)) {
-		// Check USB clock ready
-		while (!(USB_REG->SR & SR_CLKUSABLE));
-
-		// Unfreeze the clock
-		USB_REG->CTRL &= ~CTRL_FRZCLK;
-
-		USB_REG->HSTICR |= (HSTICR_HWUPIC | HSTICR_RSMEDIC | HSTICR_RXRSMIC);
-		USB_REG->HSTIDR |= (HSTIDR_HWUPIEC | HSTIDR_RSMEDIEC | HSTIDR_RXRSMIEC);
-		USB_REG->HSTIER |= (HSTIER_RSTIES | HSTIER_DDISCIES );
-
-		// /* Enable SOF */
-		// USB_REG->CTRL |= HSTCTRL_SOFE;
-
-		/* Reset */
-		USB_REG->DEVCTRL &= ~DEVCTRL_SPDCONF;
-		// USB_REG->HSTIER |= (HSTIER_HSOFIES);
-	}
-
-	// 	if (!(isr & USBHS_HSTISR_RSMEDI) && !(isr & USBHS_HSTISR_DDISCI)) {
-	// 		/* It is a upstream resume
-	// 		 * Note: When the CPU exits from a deep sleep mode, the event
-	// 		 * USBHS_HSTISR_RXRSMI can be not detected
-	// 		 * because the USB clock are not available.
-	// 		 *
-	// 		 * In High speed mode a downstream resume must be sent
-	// 		 * after a upstream to avoid a disconnection.
-	// 		 */
-	// 		if (hri_usbhs_get_SR_reg(drv->hw, USBHS_SR_SPEED_Msk) == USBHS_SR_SPEED_HIGH_SPEED) {
-	// 			hri_usbhs_set_HSTCTRL_RESUME_bit(drv->hw);
-	// 		}
-	// 	}
-	// 	/* Wait 50ms before restarting transfer */
-	// 	_usb_h_set_resume(drv, pd, 50);
-	// }
-}
 
 bool hcd_init(uint8_t rhport)
 {
@@ -194,7 +100,7 @@ bool hcd_init(uint8_t rhport)
 // 	hri_usbhs_clear_HSTCTRL_reg(hw, USBHS_HSTCTRL_SPDCONF_Msk);
 // #endif
 	// TODO: detect if set to use high speed
-	USB_REG->DEVCTRL &= ~DEVCTRL_SPDCONF;
+	USB_REG->HSTCTRL &= ~HSTCTRL_SPDCONF;
 
 // 	/* Force re-connection on initialization */
 // 	hri_usbhs_write_HSTIFR_reg(drv->hw, USBHS_HSTIMR_DDISCIE | USBHS_HSTIMR_HWUPIE);
@@ -210,9 +116,9 @@ bool hcd_init(uint8_t rhport)
 // 	/* Check USB clock */
 // 	hri_usbhs_clear_CTRL_reg(drv->hw, USBHS_CTRL_FRZCLK);
 	// TODO: Check if this can be unfreezed on interrupt handling like the device implementation.
-	USB_REG->CTRL &= ~CTRL_FRZCLK;
+	// USB_REG->CTRL &= ~CTRL_FRZCLK;
 // 	while (!hri_usbhs_get_SR_reg(drv->hw, USBHS_SR_CLKUSABLE));
-	while (!(USB_REG->SR & SR_CLKUSABLE));
+	// while (!(USB_REG->SR & SR_CLKUSABLE));
 
 // 	/* Clear all interrupts that may have been set by a previous host mode */
 // 	hri_usbhs_write_HSTICR_reg(drv->hw,
@@ -231,7 +137,7 @@ bool hcd_init(uint8_t rhport)
 // 	/* Enable interrupts to detect connection */
 // 	hri_usbhs_set_HSTIMR_reg(drv->hw,
 // 	                         USBHS_HSTIMR_DCONNIE | USBHS_HSTIMR_RSTIE | USBHS_HSTIMR_HSOFIE | USBHS_HSTIMR_HWUPIE);
-	USB_REG->HSTIER |= (HSTIER_DCONNIES | HSTIER_RSTIES /*| HSTIER_HSOFIES */ |  HSTIER_HWUPIES);
+	USB_REG->HSTIER |= HSTIER_HWUPIES;
 
 	return true;
 }
@@ -256,7 +162,6 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
 void hcd_int_enable(uint8_t rhport)
 {
 	(void) rhport;
-	// breakpoint();
 	NVIC_EnableIRQ((IRQn_Type) ID_USBHS);
 }
 
@@ -269,7 +174,11 @@ void hcd_int_disable(uint8_t rhport)
 
 void hcd_port_reset(uint8_t rhport)
 {
-	breakpoint();
+	// Enable reset sent interrupt
+	USB_REG->HSTIER |= HSTIER_RSTIES;
+
+	// Send reset
+	USB_REG->HSTCTRL |= HSTCTRL_RESET;
 }
 
 void hcd_port_reset_end(uint8_t rhport)
@@ -299,8 +208,7 @@ tusb_speed_t hcd_port_speed_get(uint8_t rhport)
 
 uint32_t hcd_frame_number(uint8_t rhport)
 {
-	breakpoint();
-	return 0;
+	return (USB_REG->HSTFNUM & HSTFNUM_FNUM) >> HSTFNUM_FNUM_Pos;
 }
 
 bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const * ep_desc)
@@ -316,45 +224,57 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 }
 
 
-
 void hcd_int_handler(uint8_t rhport)
 {
 	volatile uint32_t isr = USB_REG->HSTISR;
 
-	// /* Low speed, switch to low power mode to use 48MHz clock */
-	// // TODO: check handling transition from low speed -> high speed
-	// volatile tusb_speed_t speed = hcd_port_speed_get(rhport);
-	// if (speed == TUSB_SPEED_FULL || speed == TUSB_SPEED_LOW)
-	// {
-	// 	if (!(USB_REG->CTRL & USBHS_HSTCTRL_SPDCONF_Msk)) {
-	// 		USB_REG->CTRL |= DEVCTRL_SPDCONF_LOW_POWER;
-	// 	}
-	// }
-
-	/* SOF */
-	// if (isr & HSTISR_HSOFI) {
-	// 	hcd_handle_sof(rhport);
-	// 	return;
-	// }
-
-	/* Pipe interrupts */
-	if (isr & HSTIMR_PEP_) {
-		hcd_handle_pipe(rhport);
-		return;
+	/* Low speed, switch to low power mode to use 48MHz clock */
+	// TODO: check handling transition from low speed -> high speed
+	volatile tusb_speed_t speed = hcd_port_speed_get(rhport);
+	if (speed == TUSB_SPEED_FULL || speed == TUSB_SPEED_LOW)
+	{
+		if (!(USB_REG->HSTCTRL & USBHS_HSTCTRL_SPDCONF_Msk))
+		{
+			USB_REG->HSTCTRL|= HSTCTRL_SPDCONF_LOW_POWER;
+		}
 	}
 
-	// /* DMA interrupts */
-	// TODO: handle dma as needed
-	// if (isr & HSTISR_DMA_) {
-	// 	hcd_handle_dma(rhport);
-	// 	return;
-	// }
+	if (isr & HSTISR_HWUPI)
+	{
+		// USB_REG->CTRL &= ~CTRL_FRZCLK;
+		// while (!(USB_REG->SR & SR_CLKUSABLE));
 
-	/* Reset sent, connect/disconnect, wake up */
-	if (isr & (HSTISR_RSTI | HSTISR_DCONNI | HSTISR_DDISCI | HSTISR_HWUPI | HSTISR_RXRSMI | HSTISR_RXRSMI)) {
-		hcd_handle_rh_change(rhport, isr);
-		return;
+		// Disable HWUPI interrupt
+		USB_REG->HSTIDR |= HSTIDR_HWUPIEC;
+
+		// Enable VBUS
+		USB_REG->SFR |= SFR_VBUSRQS;
+
+		USB_REG->HSTICR |= HSTICR_HWUPIC;
+		USB_REG->HSTIDR |= HSTIDR_HWUPIEC;
+
+		// Enable connect interrupt
+		USB_REG->HSTIER |= HSTIER_DCONNIES;
 	}
+
+	if (isr & HSTISR_DCONNI)
+	{
+		// USB_REG->CTRL &= ~CTRL_FRZCLK;
+		// while (!(USB_REG->SR & SR_CLKUSABLE));
+
+		USB_REG->HSTICR |= HSTICR_DCONNIC;
+		USB_REG->HSTIDR |= HSTISR_DCONNI;
+
+		// Enable disconnection interrupt
+		USB_REG->HSTIER |= HSTIER_DDISCIES;
+
+		// Enable SOF
+		USB_REG->HSTCTRL |= HSTCTRL_SOFE;
+
+		// Notify tinyUSB that device attached to initiate next states
+		hcd_event_device_attach(rhport, true);
+	}
+
 }
 
 #endif
