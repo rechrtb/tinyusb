@@ -53,7 +53,9 @@ static void hcd_enable_sof_int(uint8_t rhport)
 
 static void hcd_handle_sof(uint8_t rhport)
 {
-
+	// TODO: check if one use of handling SOF interrupts
+	// is to correctly implement hcd_frame_number on high speed, which seems to be
+	// used for computing time measurement in milliseconds on non-OS builds
 }
 
 static void hcd_handle_pipe(uint8_t rhport)
@@ -77,11 +79,14 @@ static void hcd_handle_rh_change(uint8_t rhport, uint32_t isr)
 		USB_REG->HSTICR |= HSTISR_DDISCI;
 		USB_REG->HSTIER |= HSTISR_DDISCI;
 
-		/* Enable SOF */
-		USB_REG->CTRL |= HSTCTRL_SOFE;
+		// /* Enable SOF */
+		// USB_REG->CTRL |= HSTCTRL_SOFE;
 
 		USB_REG->CTRL |= HSTCTRL_RESET;
 	}
+
+
+
 
 	if ((isr & HSTISR_HWUPI) && (imr & HSTISR_DCONNI))
 	{
@@ -109,12 +114,12 @@ static void hcd_handle_rh_change(uint8_t rhport, uint32_t isr)
 		USB_REG->HSTIDR |= (HSTIDR_HWUPIEC | HSTIDR_RSMEDIEC | HSTIDR_RXRSMIEC);
 		USB_REG->HSTIER |= (HSTIER_RSTIES | HSTIER_DDISCIES );
 
-		/* Enable SOF */
-		USB_REG->CTRL |= HSTCTRL_SOFE;
+		// /* Enable SOF */
+		// USB_REG->CTRL |= HSTCTRL_SOFE;
 
 		/* Reset */
 		USB_REG->DEVCTRL &= ~DEVCTRL_SPDCONF;
-		USB_REG->HSTIER |= (HSTIER_HSOFIES);
+		// USB_REG->HSTIER |= (HSTIER_HSOFIES);
 	}
 
 	// 	if (!(isr & USBHS_HSTISR_RSMEDI) && !(isr & USBHS_HSTISR_DDISCI)) {
@@ -226,7 +231,7 @@ bool hcd_init(uint8_t rhport)
 // 	/* Enable interrupts to detect connection */
 // 	hri_usbhs_set_HSTIMR_reg(drv->hw,
 // 	                         USBHS_HSTIMR_DCONNIE | USBHS_HSTIMR_RSTIE | USBHS_HSTIMR_HSOFIE | USBHS_HSTIMR_HWUPIE);
-	USB_REG->HSTIER |= (HSTIER_DCONNIES | HSTIER_RSTIES | HSTIER_HSOFIES |  HSTIER_HWUPIES);
+	USB_REG->HSTIER |= (HSTIER_DCONNIES | HSTIER_RSTIES /*| HSTIER_HSOFIES */ |  HSTIER_HWUPIES);
 
 	return true;
 }
@@ -327,10 +332,10 @@ void hcd_int_handler(uint8_t rhport)
 	// }
 
 	/* SOF */
-	if (isr & HSTISR_HSOFI) {
-		hcd_handle_sof(rhport);
-		return;
-	}
+	// if (isr & HSTISR_HSOFI) {
+	// 	hcd_handle_sof(rhport);
+	// 	return;
+	// }
 
 	/* Pipe interrupts */
 	if (isr & HSTIMR_PEP_) {
