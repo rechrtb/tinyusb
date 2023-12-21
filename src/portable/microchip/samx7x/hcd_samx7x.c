@@ -241,8 +241,8 @@ void hcd_int_handler(uint8_t rhport)
 
 	if (isr & HSTISR_HWUPI)
 	{
-		// USB_REG->CTRL &= ~CTRL_FRZCLK;
-		// while (!(USB_REG->SR & SR_CLKUSABLE));
+		USB_REG->CTRL &= ~CTRL_FRZCLK;
+		while (!(USB_REG->SR & SR_CLKUSABLE));
 
 		// Disable HWUPI interrupt
 		USB_REG->HSTIDR |= HSTIDR_HWUPIEC;
@@ -259,8 +259,8 @@ void hcd_int_handler(uint8_t rhport)
 
 	if (isr & HSTISR_DCONNI)
 	{
-		// USB_REG->CTRL &= ~CTRL_FRZCLK;
-		// while (!(USB_REG->SR & SR_CLKUSABLE));
+		USB_REG->CTRL &= ~CTRL_FRZCLK;
+		while (!(USB_REG->SR & SR_CLKUSABLE));
 
 		USB_REG->HSTICR |= HSTICR_DCONNIC;
 		USB_REG->HSTIDR |= HSTISR_DCONNI;
