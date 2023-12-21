@@ -52,6 +52,11 @@
 #endif
 static_assert(PICO_USB_HOST_INTERRUPT_ENDPOINTS <= USB_MAX_ENDPOINTS, "");
 
+void breakpoint()
+{
+  volatile int a = 0;
+}
+
 // Host mode uses one shared endpoint register for non-interrupt endpoint
 static struct hw_endpoint ep_pool[1 + PICO_USB_HOST_INTERRUPT_ENDPOINTS];
 #define epx (ep_pool[0])
@@ -382,6 +387,7 @@ static void _hw_endpoint_init(struct hw_endpoint *ep, uint8_t dev_addr, uint8_t 
 //--------------------------------------------------------------------+
 bool hcd_init(uint8_t rhport)
 {
+  breakpoint();
   (void) rhport;
   pico_trace("hcd_init %d\n", rhport);
   assert(rhport == 0);
@@ -416,6 +422,7 @@ bool hcd_init(uint8_t rhport)
 
 void hcd_port_reset(uint8_t rhport)
 {
+  breakpoint();
   (void) rhport;
   pico_trace("hcd_port_reset\n");
   assert(rhport == 0);
@@ -424,11 +431,13 @@ void hcd_port_reset(uint8_t rhport)
 
 void hcd_port_reset_end(uint8_t rhport)
 {
+  breakpoint();
   (void) rhport;
 }
 
 bool hcd_port_connect_status(uint8_t rhport)
 {
+  breakpoint();
   (void) rhport;
   pico_trace("hcd_port_connect_status\n");
   assert(rhport == 0);
@@ -437,6 +446,7 @@ bool hcd_port_connect_status(uint8_t rhport)
 
 tusb_speed_t hcd_port_speed_get(uint8_t rhport)
 {
+  breakpoint();
   (void) rhport;
   assert(rhport == 0);
 
@@ -456,6 +466,7 @@ tusb_speed_t hcd_port_speed_get(uint8_t rhport)
 // Close all opened endpoint belong to this device
 void hcd_device_close(uint8_t rhport, uint8_t dev_addr)
 {
+  breakpoint();
   pico_trace("hcd_device_close %d\n", dev_addr);
   (void) rhport;
 
@@ -482,12 +493,14 @@ void hcd_device_close(uint8_t rhport, uint8_t dev_addr)
 
 uint32_t hcd_frame_number(uint8_t rhport)
 {
+  breakpoint();
   (void) rhport;
   return usb_hw->sof_rd;
 }
 
 void hcd_int_enable(uint8_t rhport)
 {
+  breakpoint();
   (void) rhport;
   assert(rhport == 0);
   irq_set_enabled(USBCTRL_IRQ, true);
@@ -495,6 +508,7 @@ void hcd_int_enable(uint8_t rhport)
 
 void hcd_int_disable(uint8_t rhport)
 {
+  breakpoint();
   (void) rhport;
   // todo we should check this is disabling from the correct core; note currently this is never called
   assert(rhport == 0);
@@ -507,6 +521,7 @@ void hcd_int_disable(uint8_t rhport)
 
 bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const * ep_desc)
 {
+  breakpoint();
   (void) rhport;
 
   pico_trace("hcd_edpt_open dev_addr %d, ep_addr %d\n", dev_addr, ep_desc->bEndpointAddress);
@@ -527,6 +542,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 
 bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * buffer, uint16_t buflen)
 {
+  breakpoint();
   (void) rhport;
 
   pico_trace("hcd_edpt_xfer dev_addr %d, ep_addr 0x%x, len %d\n", dev_addr, ep_addr, buflen);
@@ -576,6 +592,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
 
 bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet[8])
 {
+  breakpoint();
   (void) rhport;
 
   // Copy data into setup packet buffer
@@ -612,6 +629,7 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
 
 bool hcd_edpt_clear_stall(uint8_t dev_addr, uint8_t ep_addr)
 {
+  breakpoint();
   (void) dev_addr;
   (void) ep_addr;
 

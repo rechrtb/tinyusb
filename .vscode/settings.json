@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "hal_usart_async.h": "c",
+        "hpl_usart_base.h": "c"
+    }
+}
