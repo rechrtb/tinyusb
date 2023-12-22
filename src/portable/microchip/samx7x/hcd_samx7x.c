@@ -238,15 +238,16 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 	// Configure the pipe
 	USB_REG->HSTPIP |= ((1 << pipe) << HSTPIP_PEN_Pos) & HSTPIP_PEN; // enable pipe
 
-	tusb_speed_t speed = hcd_port_speed_get(rhport);
+	uint32_t cfg = 0;
+
 	tusb_xfer_type_t type = ep_desc->bmAttributes.xfer;
+	cfg |= (HSTPIPCFG_PTYPE & ((uint32_t)type << HSTPIPCFG_PTYPE_Pos));
 
 	tusb_dir_t dir  = ep_desc->bEndpointAddress & TUSB_DIR_IN_MASK;
-	bool ping = (speed == TUSB_SPEED_HIGH) && (type == TUSB_XFER_CONTROL || (type == TUSB_XFER_BULK && dir == TUSB_DIR_OUT));
-	uint8_t bank = ((ep_desc->wMaxPacketSize >> 11) & 0x3) + 1;
-	uint16_t psize = compute_psize(ep_desc->wMaxPacketSize);
+	cfg |= (type == TUSB_XFER_CONTROL ? 0 : (dir ? USBHS_HSTPIPCFG_PTOKEN_IN : USBHS_HSTPIPCFG_PTOKEN_OUT));
 
 	uint16_t interval = ep_desc->bInterval;
+	tusb_speed_t speed = hcd_port_speed_get(rhport);
 	if (speed == TUSB_SPEED_HIGH && (type == TUSB_XFER_ISOCHRONOUS || type == TUSB_XFER_INTERRUPT))
 	{
 		uint16_t ms = interval > 16 ? 16 : 2 << (interval - 1);
@@ -258,19 +259,21 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 			interval = 1;
 		}
 	}
+	cfg |= (HSTPIPCFG_INTFRQ & ((uint32_t)interval << HSTPIPCFG_INTFRQ_Pos));
 
-	uint32_t cfg = 0;
-
-	cfg |= (HSTPIPCFG_INTFRQ & (interval << HSTPIPCFG_INTFRQ_Pos)); // intereupt request frequency
+	bool ping = (speed == TUSB_SPEED_HIGH) && (type == TUSB_XFER_CONTROL || (type == TUSB_XFER_BULK && dir == TUSB_DIR_OUT));
 	cfg |= (ping ? HSTPIPCFG_CTRL_BULK_PINGEN : 0);
-	cfg |= (HSTPIPCFG_PEPNUM & ((ep_desc->bEndpointAddress & 0xF) << HSTPIPCFG_PEPNUM_Pos));
-	cfg |= (HSTPIPCFG_PSIZE & ((psize) << HSTPIPCFG_PSIZE_Pos));
-	cfg |= (HSTPIPCFG_PBK & ((bank) << HSTPIPCFG_PBK_Pos));
-	cfg |= (ep_desc->bmAttributes.xfer == TUSB_XFER_CONTROL ? 0 :
-					(dir ? USBHS_HSTPIPCFG_PTOKEN_IN : USBHS_HSTPIPCFG_PTOKEN_OUT));
+
+	cfg |= (HSTPIPCFG_PEPNUM & ((uint32_t)(ep_desc->bEndpointAddress & 0xF) << HSTPIPCFG_PEPNUM_Pos));
+
+	uint16_t size = ep_desc->wMaxPacketSize & 0x3FF;
+	cfg |= (HSTPIPCFG_PSIZE & ((uint32_t)compute_psize(size) << HSTPIPCFG_PSIZE_Pos));
+
+	uint8_t bank = ((size >> 11) & 0x3) + 1;
+	cfg |= (HSTPIPCFG_PBK & ((uint32_t)bank << HSTPIPCFG_PBK_Pos));
 
 	USB_REG->HSTPIPCFG[pipe] = cfg;
-	cfg |= HSTPIPCFG_ALLOC;
+	cfg |= HSTPIPCFG_ALLOC; // TODO: check if alloc needs to be sandwiched here
 	USB_REG->HSTPIPCFG[pipe] = cfg;
 
 	if (USB_REG->HSTPIPISR[pipe] & HSTPIPISR_CFGOK) // check if config is correct
