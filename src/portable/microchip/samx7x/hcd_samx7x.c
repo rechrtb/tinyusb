@@ -244,7 +244,8 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 	cfg |= (HSTPIPCFG_PTYPE & ((uint32_t)type << HSTPIPCFG_PTYPE_Pos));
 
 	tusb_dir_t dir  = ep_desc->bEndpointAddress & TUSB_DIR_IN_MASK;
-	cfg |= (type == TUSB_XFER_CONTROL ? 0 : (dir ? USBHS_HSTPIPCFG_PTOKEN_IN : USBHS_HSTPIPCFG_PTOKEN_OUT));
+	cfg |= (type == TUSB_XFER_CONTROL ? USBHS_HSTPIPCFG_PTOKEN_OUT :
+					(dir == TUSB_DIR_OUT ? USBHS_HSTPIPCFG_PTOKEN_OUT : USBHS_HSTPIPCFG_PTOKEN_IN));
 
 	uint16_t interval = ep_desc->bInterval;
 	tusb_speed_t speed = hcd_port_speed_get(rhport);
@@ -270,10 +271,11 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 	cfg |= (HSTPIPCFG_PSIZE & ((uint32_t)compute_psize(size) << HSTPIPCFG_PSIZE_Pos));
 
 	uint8_t bank = ((size >> 11) & 0x3) + 1;
-	cfg |= (HSTPIPCFG_PBK & ((uint32_t)bank << HSTPIPCFG_PBK_Pos));
+	cfg |= (HSTPIPCFG_PBK & ((uint32_t)(bank - 1) << HSTPIPCFG_PBK_Pos));
 
-	USB_REG->HSTPIPCFG[pipe] = cfg;
-	cfg |= HSTPIPCFG_ALLOC; // TODO: check if alloc needs to be sandwiched here
+	cfg |= HSTPIPCFG_ALLOC;
+
+	USB_REG->HSTPIP |= USBHS_HSTPIP_PEN0 << pipe;
 	USB_REG->HSTPIPCFG[pipe] = cfg;
 
 	if (USB_REG->HSTPIPISR[pipe] & HSTPIPISR_CFGOK) // check if config is correct
