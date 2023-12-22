@@ -38,6 +38,8 @@ static bool ready = false;
 
 static const uint16_t psize_2_size[] = {8, 16, 32, 64, 128, 256, 512, 1024};
 
+#define EP_GET_FIFO_PTR(ep, scale) (((TU_XSTRCAT(TU_STRCAT(uint, scale),_t) (*)[0x8000 / ((scale) / 8)])FIFO_RAM_ADDR)[(ep)])
+
 void breakpoint(void)
 {
 	volatile int a = 0;
@@ -52,7 +54,7 @@ static void hcd_reset_pipes(uint8_t rhport)
 static uint16_t compute_psize(uint16_t size)
 {
 	uint8_t i;
-	for (i = 0; i < sizeof(psize_2_size) / sizeof(sizeof(psize_2_size[0])); i++) {
+	for (i = 0; i < sizeof(psize_2_size) / sizeof(uint16_t); i++) {
 		/* Size should be exactly PSIZE values */
 		if (size <= psize_2_size[i]) {
 			return i;
@@ -60,7 +62,6 @@ static uint16_t compute_psize(uint16_t size)
 	}
 	return 7;
 }
-
 
 bool hcd_init(uint8_t rhport)
 {
@@ -173,8 +174,36 @@ void hcd_device_close(uint8_t rhport, uint8_t dev_addr)
 
 bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet[8])
 {
-	breakpoint();
-	return false;
+	// struct usb_h_desc *drv  = pipe->hcd;
+	// uint8_t            pi   = _usb_h_pipe_i(pipe);
+	// uint8_t *          src8 = pipe->x.ctrl.setup;
+	// volatile uint8_t * dst8 = (volatile uint8_t *)&_usbhs_get_pep_fifo_access(pi, 8);
+	// uint8_t            i;
+
+	// hri_usbhs_write_HSTPIPCFG_PTOKEN_bf(drv->hw, pi, USBHS_HSTPIPCFG_PTOKEN_SETUP_Val);
+	uint8_t pipe = 0; // TODO: find the correct pipe, maybe using HOSTADDRx registers.
+
+	uint32_t tmp = USB_REG->HSTPIPCFG[pipe];
+	tmp &= ~HSTPIPCFG_PTOKEN;
+	tmp |= HSTPIPCFG_PTOKEN & ((uint32_t)(HSTPIPCFG_PTOKEN_SETUP_Val) << HSTPIPCFG_PTOKEN_Pos);
+	USB_REG->HSTPIPCFG[pipe] = tmp;
+
+	// hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXSTPI);
+	USB_REG->HSTPIPICR[pipe] |= HSTPIPISR_CTRL_TXSTPI;
+
+	const uint8_t *src8 = setup_packet;
+	uint8_t *dst8 = EP_GET_FIFO_PTR(pipe, 8);
+	for (size_t i = 0; i < 8; i++)
+	{
+		*dst8++ = *src8++;
+	}
+
+	// hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIMR_TXSTPE);
+	USB_REG->HSTPIPIER[pipe] |= HSTPIPIER_CTRL_TXSTPES;
+	// hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIMR_FIFOCON | USBHS_HSTPIPIMR_PFREEZE);
+	USB_REG->HSTPIPIDR[pipe] |= HSTPIPIMR_FIFOCON | HSTPIPIMR_PFREEZE;
+
+	return true;
 }
 
 void hcd_int_enable(uint8_t rhport)
@@ -244,7 +273,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 	cfg |= (HSTPIPCFG_PTYPE & ((uint32_t)type << HSTPIPCFG_PTYPE_Pos));
 
 	tusb_dir_t dir  = ep_desc->bEndpointAddress & TUSB_DIR_IN_MASK;
-	cfg |= (type == TUSB_XFER_CONTROL ? USBHS_HSTPIPCFG_PTOKEN_OUT :
+	cfg |= (type == TUSB_XFER_CONTROL ? 0 :
 					(dir == TUSB_DIR_OUT ? USBHS_HSTPIPCFG_PTOKEN_OUT : USBHS_HSTPIPCFG_PTOKEN_IN));
 
 	uint16_t interval = ep_desc->bInterval;
@@ -281,8 +310,18 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 	if (USB_REG->HSTPIPISR[pipe] & HSTPIPISR_CFGOK) // check if config is correct
 	{
 		// Setup pipe address
+		uint8_t reg_i = pipe >> 2;
+		uint8_t pos = (pipe & 0x3) << 3;
+		uint32_t reg = (&USB_REG->HSTADDR1)[reg_i];
+		reg &= ~(0x7F << pos);
+		reg |= (dev_addr & 0x7F) << pos;
+		(&USB_REG->HSTADDR1)[reg_i] = reg;
 
-		// Turn on pipe-related interrupts
+		// Configure pipe-related interrupts
+		USB_REG->HSTPIPICR[pipe] |= HSTPIPICR_CTRL_RXSTALLDIC | HSTPIPICR_OVERFIC | HSTPIPISR_PERRI | HSTPIPICR_INTRPT_UNDERFIC;
+		USB_REG->HSTPIPIER[pipe] |= HSTPIPIER_CTRL_RXSTALLDES | HSTPIPIER_OVERFIES | HSTPIPIER_PERRES;
+		USB_REG->HSTIER |= (HSTISR_PEP_0 | (HSTISR_DMA_0 >> 1)) << pipe;
+
 		return true;
 	}
 
@@ -350,10 +389,61 @@ void hcd_int_handler(uint8_t rhport)
 
 	if (isr & HSTISR_RSTI)
 	{
+		USB_REG->CTRL &= ~CTRL_FRZCLK;
+		while (!(USB_REG->SR & SR_CLKUSABLE));
 		USB_REG->HSTICR |= HSTICR_RSTIC;
 		USB_REG->HSTIDR |= HSTIDR_RSTIEC;
 
 		ready = true;
+	}
+
+	if (isr & HSTISR_PEP_)
+	{
+		USB_REG->CTRL &= ~CTRL_FRZCLK;
+		while (!(USB_REG->SR & SR_CLKUSABLE));
+		uint8_t pipe = 23 - __CLZ(isr & USBHS_HSTISR_PEP__Msk);
+		uint32_t pipisr = USB_REG->HSTPIPISR[pipe];
+
+		if (pipisr & HSTPIPISR_CTRL_TXSTPI)
+		{
+			// hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXSTPI);
+			USB_REG->HSTPIPICR[pipe] |= HSTPIPICR_CTRL_TXSTPIC;
+			// hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXSTPI);
+			USB_REG->HSTPIPIDR[pipe] |= HSTPIPICR_CTRL_TXSTPIC;
+
+			// hri_usbhs_write_HSTPIPCFG_PTOKEN_bf(drv->hw, pi, USBHS_HSTPIPCFG_PTOKEN_IN_Val);
+			uint32_t tmp = USB_REG->HSTPIPCFG[pipe];
+			tmp &= ~HSTPIPCFG_PTOKEN;
+			tmp |= HSTPIPCFG_PTOKEN & ((uint32_t)(HSTPIPCFG_PTOKEN_IN_Val) << HSTPIPCFG_PTOKEN_Pos);
+			USB_REG->HSTPIPCFG[pipe] = tmp;
+
+			// hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_RXINI | USBHS_HSTPIPISR_SHORTPACKETI);
+			USB_REG->HSTPIPICR[pipe] |= HSTPIPISR_RXINI | HSTPIPISR_SHORTPACKETI;
+			// hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIER_RXINES);
+			USB_REG->HSTPIPIER[pipe] |= HSTPIPIER_RXINES;
+			// hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIMR_FIFOCON | USBHS_HSTPIPIMR_PFREEZE);
+			USB_REG->HSTPIPIDR[pipe] |= HSTPIPIMR_FIFOCON | HSTPIPIMR_PFREEZE;
+
+			/* Start DATA phase */
+			// if (p->x.ctrl.setup[0] & 0x80) { /* IN */
+			// 	p->x.ctrl.state = USB_H_PIPE_S_DATI;
+			// 	/* Start IN requests */
+			// 	_usb_h_ctrl_in_req(p);
+			// } else {                                            /* OUT */
+			// 	if (p->x.ctrl.setup[6] || p->x.ctrl.setup[7]) { /* wLength */
+			// 		p->x.ctrl.state = USB_H_PIPE_S_DATO;
+			// 		/* Start OUT */
+			// 		hri_usbhs_write_HSTPIPCFG_PTOKEN_bf(drv->hw, pi, USBHS_HSTPIPCFG_PTOKEN_OUT_Val);
+			// 		hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIMR_TXOUTE);
+			// 		_usb_h_out(p);
+			// 	} else { /* No DATA phase */
+			// 		p->x.ctrl.state = USB_H_PIPE_S_STATI;
+			// 		/* Start IN ZLP request */
+			// 		_usb_h_ctrl_in_req(p);
+			// 	}
+			// }
+			// return;
+		}
 	}
 }
 
