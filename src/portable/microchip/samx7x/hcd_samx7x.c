@@ -34,6 +34,10 @@
 #include "sam.h"
 #include "common_usb_regs.h"
 
+static bool ready = false;
+
+static const uint16_t psize_2_size[] = {8, 16, 32, 64, 128, 256, 512, 1024};
+
 void breakpoint(void)
 {
 	volatile int a = 0;
@@ -43,6 +47,18 @@ void breakpoint(void)
 static void hcd_reset_pipes(uint8_t rhport)
 {
 	// TODO: implement
+}
+
+static uint16_t compute_psize(uint16_t size)
+{
+	uint8_t i;
+	for (i = 0; i < sizeof(psize_2_size) / sizeof(sizeof(psize_2_size[0])); i++) {
+		/* Size should be exactly PSIZE values */
+		if (size <= psize_2_size[i]) {
+			return i;
+		}
+	}
+	return 7;
 }
 
 
@@ -139,6 +155,8 @@ bool hcd_init(uint8_t rhport)
 // 	                         USBHS_HSTIMR_DCONNIE | USBHS_HSTIMR_RSTIE | USBHS_HSTIMR_HSOFIE | USBHS_HSTIMR_HWUPIE);
 	USB_REG->HSTIER |= HSTIER_HWUPIES;
 
+	ready = false;
+
 	return true;
 }
 
@@ -183,18 +201,16 @@ void hcd_port_reset(uint8_t rhport)
 
 void hcd_port_reset_end(uint8_t rhport)
 {
-	breakpoint();
+	(void) rhport;
 }
 
 bool hcd_port_connect_status(uint8_t rhport)
 {
-	breakpoint();
-	return false;
+	return ready;
 }
 
 tusb_speed_t hcd_port_speed_get(uint8_t rhport)
 {
-	breakpoint();
 	switch (USB_REG->SR & SR_SPEED) {
 	case SR_SPEED_FULL_SPEED:
 	default:
@@ -213,7 +229,59 @@ uint32_t hcd_frame_number(uint8_t rhport)
 
 bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const * ep_desc)
 {
-	breakpoint();
+	// Reset the pipe
+	uint8_t pipe = 0; // TODO: find available pipe
+
+	USB_REG->HSTPIP |= ((1 << pipe) << HSTPIP_PRST_Pos) & HSTPIP_PRST; // put pipe in reset
+	USB_REG->HSTPIP &= ~(((1 << pipe) << HSTPIP_PRST_Pos) & HSTPIP_PRST); // remove pipe from reset
+
+	// Configure the pipe
+	USB_REG->HSTPIP |= ((1 << pipe) << HSTPIP_PEN_Pos) & HSTPIP_PEN; // enable pipe
+
+	tusb_speed_t speed = hcd_port_speed_get(rhport);
+	tusb_xfer_type_t type = ep_desc->bmAttributes.xfer;
+
+	tusb_dir_t dir  = ep_desc->bEndpointAddress & TUSB_DIR_IN_MASK;
+	bool ping = (speed == TUSB_SPEED_HIGH) && (type == TUSB_XFER_CONTROL || (type == TUSB_XFER_BULK && dir == TUSB_DIR_OUT));
+	uint8_t bank = ((ep_desc->wMaxPacketSize >> 11) & 0x3) + 1;
+	uint16_t psize = compute_psize(ep_desc->wMaxPacketSize);
+
+	uint16_t interval = ep_desc->bInterval;
+	if (speed == TUSB_SPEED_HIGH && (type == TUSB_XFER_ISOCHRONOUS || type == TUSB_XFER_INTERRUPT))
+	{
+		uint16_t ms = interval > 16 ? 16 : 2 << (interval - 1);
+		interval = (ms > 0xFF) ? 0xFF : (uint8_t)ms;
+	} else
+	{
+		if (type == TUSB_XFER_BULK && dir == TUSB_DIR_OUT && interval < 1)
+		{
+			interval = 1;
+		}
+	}
+
+	uint32_t cfg = 0;
+
+	cfg |= (HSTPIPCFG_INTFRQ & (interval << HSTPIPCFG_INTFRQ_Pos)); // intereupt request frequency
+	cfg |= (ping ? HSTPIPCFG_CTRL_BULK_PINGEN : 0);
+	cfg |= (HSTPIPCFG_PEPNUM & ((ep_desc->bEndpointAddress & 0xF) << HSTPIPCFG_PEPNUM_Pos));
+	cfg |= (HSTPIPCFG_PSIZE & ((psize) << HSTPIPCFG_PSIZE_Pos));
+	cfg |= (HSTPIPCFG_PBK & ((bank) << HSTPIPCFG_PBK_Pos));
+	cfg |= (ep_desc->bmAttributes.xfer == TUSB_XFER_CONTROL ? 0 :
+					(dir ? USBHS_HSTPIPCFG_PTOKEN_IN : USBHS_HSTPIPCFG_PTOKEN_OUT));
+
+	USB_REG->HSTPIPCFG[pipe] = cfg;
+	cfg |= HSTPIPCFG_ALLOC;
+	USB_REG->HSTPIPCFG[pipe] = cfg;
+
+	if (USB_REG->HSTPIPISR[pipe] & HSTPIPISR_CFGOK) // check if config is correct
+	{
+		// Setup pipe address
+
+		// Turn on pipe-related interrupts
+		return true;
+	}
+
+	USB_REG->HSTPIP &= ~(((1 << pipe) << HSTPIP_PEN_Pos) & HSTPIP_PEN); // disable pipe
 	return false;
 }
 
@@ -275,6 +343,13 @@ void hcd_int_handler(uint8_t rhport)
 		hcd_event_device_attach(rhport, true);
 	}
 
+	if (isr & HSTISR_RSTI)
+	{
+		USB_REG->HSTICR |= HSTICR_RSTIC;
+		USB_REG->HSTIDR |= HSTIDR_RSTIEC;
+
+		ready = true;
+	}
 }
 
 #endif
