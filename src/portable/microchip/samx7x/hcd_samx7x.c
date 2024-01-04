@@ -40,6 +40,9 @@ static const uint16_t psize_2_size[] = {8, 16, 32, 64, 128, 256, 512, 1024};
 
 #define EP_GET_FIFO_PTR(ep, scale) (((TU_XSTRCAT(TU_STRCAT(uint, scale),_t) (*)[0x8000 / ((scale) / 8)])FIFO_RAM_ADDR)[(ep)])
 
+
+static bool setup_in = false;
+
 void breakpoint(void)
 {
 	volatile int a = 0;
@@ -331,10 +334,81 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 
 bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *buffer, uint16_t buflen)
 {
-	breakpoint();
-	return false;
-}
+	if (ep_addr & TUSB_DIR_IN_MASK)
+	{
+		// to_read++;
+		// if (n_rx < max_pkt_size) {
+		// 	shortpkt = true;
+		// }
+		// if (n_rx) {
+		// 	_usb_h_load_x_param(pipe, &dst, &size, &count);
+		// 	n_remain = size - count;
+		// 	src      = (uint8_t *)&_usbhs_get_pep_fifo_access(pi, 8);
+		// 	dst      = &dst[count];
+		// 	if (n_rx >= n_remain) {
+		// 		n_rx = n_remain;
+		// 		full = true;
+		// 	}
+		// 	count += n_rx;
+		// 	for (i = 0; i < n_rx; i++) {
+		// 		*dst++ = *src++;
+		// 	}
+		// 	_usb_h_save_x_param(pipe, count);
+		// }
 
+		uint8_t pipe = 0;
+		uint8_t *data =  EP_GET_FIFO_PTR(pipe, 8);
+
+		memcpy(buffer, data, buflen);
+
+		// /* Clear FIFO status */
+		// hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIDR_FIFOCONC);
+		USB_REG->HSTPIPIDR[pipe] |= HSTPIPIDR_FIFOCONC;
+
+
+		// /* Reset timeout for control pipes */
+		// if (pipe->type == 0) {
+		// 	pipe->x.ctrl.pkt_timeout = USB_CTRL_DPKT_TIMEOUT;
+		// }
+		// /* Finish on error or short packet */
+		// if (full || shortpkt) {
+		// 	hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIDR_SHORTPACKETIEC | USBHS_HSTPIPIDR_RXINEC);
+			USB_REG->HSTPIPIDR[pipe] |= HSTPIPIDR_SHORTPACKETIEC | HSTPIPIDR_RXINEC;
+		// 	if (pipe->type == 0) { /* Control transfer: DatI -> StatO */
+		// 		pipe->x.ctrl.state       = USB_H_PIPE_S_STATO;
+		// 		pipe->x.ctrl.pkt_timeout = USB_CTRL_STAT_TIMEOUT;
+		// 		_usb_h_out_zlp_ex(pipe);
+
+			// hri_usbhs_write_HSTPIPCFG_PTOKEN_bf(drv->hw, pi, USBHS_HSTPIPCFG_PTOKEN_OUT_Val);
+			uint32_t tmp = USB_REG->HSTPIPCFG[pipe];
+			tmp &= ~HSTPIPCFG_PTOKEN;
+			tmp |= HSTPIPCFG_PTOKEN & ((uint32_t)(HSTPIPCFG_PTOKEN_OUT_Val) << HSTPIPCFG_PTOKEN_Pos);
+			USB_REG->HSTPIPCFG[pipe] = tmp;
+
+			// hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXOUTI);
+			USB_REG->HSTPIPICR[pipe] |= HSTPIPISR_TXOUTI;
+
+			// hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIMR_TXOUTE);
+			USB_REG->HSTPIPIER[pipe] |= HSTPIPIER_TXOUTES;
+			// hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIMR_FIFOCON | USBHS_HSTPIPIMR_PFREEZE);
+			USB_REG->HSTPIPIDR[pipe] |= HSTPIPIMR_FIFOCON | HSTPIPIMR_PFREEZE;
+
+		// 	} else {
+		// 		hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIER_PFREEZES);
+		// 		hri_usbhs_write_HSTPIPINRQ_reg(drv->hw, pi, 0);
+		// 		_usb_h_end_transfer(pipe, USB_H_OK);
+		// 	}
+		// } else if (!hri_usbhs_read_HSTPIPINRQ_reg(drv->hw, pi)
+		// 		&& hri_usbhs_get_HSTPIPIMR_reg(drv->hw, pi, USBHS_HSTPIPIMR_PFREEZE)) {
+		// 	/* Unfreeze if request packet by packet */
+		// 	hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIMR_PFREEZE);
+		// } else {
+		// 	/* Just wait another packet */
+		// }
+		return 0;
+	}
+	return 0;
+}
 
 void hcd_int_handler(uint8_t rhport)
 {
@@ -443,6 +517,50 @@ void hcd_int_handler(uint8_t rhport)
 			// 	}
 			// }
 			// return;
+		}
+
+		/* RXIN: Full packet received */
+		if (pipisr & USBHS_HSTPIPISR_RXINI) {
+
+			// hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_RXINI | USBHS_HSTPIPISR_SHORTPACKETI);
+			USB_REG->HSTPIPICR[pipe] |= USBHS_HSTPIPICR_RXINIC | USBHS_HSTPIPICR_SHORTPACKETIC;
+
+			// /* In case of low USB speed and with a high CPU frequency,
+			//  * a ACK from host can be always running on USB line
+			//  * then wait end of ACK on IN pipe.
+			//  */
+			// if (!hri_usbhs_read_HSTPIPINRQ_reg(drv->hw, pi)) {
+			// 	while (!hri_usbhs_get_HSTPIPIMR_reg(drv->hw, pi, USBHS_HSTPIPIMR_PFREEZE)) {
+			// 	}
+			// }
+			
+
+
+			// _usb_h_in(p);
+			// uint8_t            pi  = _usb_h_pipe_i(pipe);
+			// struct usb_h_desc *drv = (struct usb_h_desc *)pipe->hcd;
+			// uint8_t *          src, *dst;
+			// uint32_t           size, count, i;
+			// uint32_t           n_rx = 0;
+			// uint32_t           n_remain;
+			// uint16_t           max_pkt_size = pipe->type == 0 ? pipe->x.ctrl.pkt_size : pipe->max_pkt_size;
+			// bool               shortpkt = false, full = false;
+
+			// if (pipe->x.general.state == USB_H_PIPE_S_STATI) {
+			// 	/* Control status : ZLP IN done */
+			// 	hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIER_PFREEZES);
+			// 	hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIDR_SHORTPACKETIEC | USBHS_HSTPIPIDR_RXINEC);
+			// 	hri_usbhs_write_HSTPIPINRQ_reg(drv->hw, pi, 0);
+			// 	_usb_h_end_transfer(pipe, USB_H_OK);
+			// 	return;
+			// } else if (pipe->x.general.state != USB_H_PIPE_S_DATI) {
+			// 	return;
+			// }
+			// /* Read byte count */
+			// n_rx = hri_usbhs_read_HSTPIPISR_PBYCT_bf(drv->hw, pi);
+			uint16_t to_read = (USB_REG->HSTPIPISR[pipe] & USBHS_HSTPIPISR_PBYCT_Msk) >> USBHS_HSTPIPISR_PBYCT_Pos;
+			hcd_event_xfer_complete(0, 0, to_read, XFER_RESULT_SUCCESS, true);
+			return;
 		}
 	}
 }
