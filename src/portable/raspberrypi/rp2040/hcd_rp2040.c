@@ -55,6 +55,7 @@ static_assert(PICO_USB_HOST_INTERRUPT_ENDPOINTS <= USB_MAX_ENDPOINTS, "");
 void breakpoint()
 {
   volatile int a = 0;
+  a++;
 }
 
 // Host mode uses one shared endpoint register for non-interrupt endpoint
