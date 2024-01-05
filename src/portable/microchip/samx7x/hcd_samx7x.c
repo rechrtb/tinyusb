@@ -45,6 +45,9 @@ typedef struct
 {
 	uint8_t len;
 	bool in;
+
+	uint8_t address;
+	uint8_t endpoint;
 } xfer_ctl_t;
 
 static xfer_ctl_t pipes[EP_MAX];
@@ -53,6 +56,46 @@ void breakpoint(void)
 {
 	volatile int a = 0;
 	a++;
+}
+
+static uint8_t hw_pipe_get_endpoint(uint8_t pipe)
+{
+	return USB_REG->HSTPIPCFG[pipe] & HSTPIPCFG_PEPNUM;
+	// return pipes[pipe].endpoint;
+}
+
+static uint8_t hw_pipe_get_address(uint8_t pipe)
+{
+	uint8_t index = pipe >> 2;
+	uint8_t pos = (pipe & 0x3) << 3;
+	uint32_t reg = (&USB_REG->HSTADDR1)[index];
+	return (reg & (0x7f << pos)) >> pos;
+	// return pipes[pipe].address;
+}
+
+static uint8_t hw_pipe_find(uint8_t address, uint8_t endpoint)
+{
+	for (int i = 1; i < EP_MAX; i++)
+	{
+		if (hw_pipe_get_address(i) == address &&
+			(endpoint == 0xFF || hw_pipe_get_endpoint(i) == endpoint))
+		{
+			return i;
+		}
+	}
+	return EP_MAX;
+}
+
+static uint8_t hw_pipe_find_free(void)
+{
+	for (int i = 1; i < EP_MAX; i++)
+	{
+		if (!hw_pipe_get_address(i))
+		{
+			return i;
+		}
+	}
+	return EP_MAX;
 }
 
 static void hw_reset_pipe(uint8_t rhport, uint8_t pipe)
@@ -182,6 +225,19 @@ bool hcd_init(uint8_t rhport)
 
 void hcd_device_close(uint8_t rhport, uint8_t dev_addr)
 {
+	uint8_t pipe = 0;
+
+	// if (dev_addr)
+	// {
+	// 	pipe = hw_pipe_find(dev_addr, 0xFF);
+	// 	if (pipe >= EP_MAX)
+	// 	{
+	// 		return false;
+	// 	}
+	// }
+
+	USB_REG->HSTPIP |= ((1 << pipe) << HSTPIP_PRST_Pos) & HSTPIP_PRST; // put pipe in reset
+	USB_REG->HSTPIP &= ~(((1 << pipe) << HSTPIP_PRST_Pos) & HSTPIP_PRST); // remove pipe from reset
 //  --- _usb_h_disable ---
 // 	ASSERT(drv && drv->hw);
 // 	hri_usbhs_set_CTRL_reg(drv->hw, USBHS_CTRL_FRZCLK);
@@ -202,9 +258,13 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
 	// hri_usbhs_write_HSTPIPCFG_PTOKEN_bf(drv->hw, pi, USBHS_HSTPIPCFG_PTOKEN_SETUP_Val);
 	uint8_t pipe = 0; // TODO: find the correct pipe, maybe using HOSTADDRx registers.
 
-	if (setup_packet[1] == 0x05)
+	if (dev_addr)
 	{
-		breakpoint();
+		pipe = hw_pipe_find(dev_addr, 0xFF);
+		if (pipe >= EP_MAX)
+		{
+			return false;
+		}
 	}
 
 	uint32_t tmp = USB_REG->HSTPIPCFG[pipe];
@@ -287,6 +347,15 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 {
 	// Reset the pipe
 	uint8_t pipe = 0; // TODO: find available pipe
+	
+	if (dev_addr)
+	{
+		pipe = hw_pipe_find_free();
+		if (pipe >= EP_MAX)
+		{
+			return false;
+		}
+	}
 
 	USB_REG->HSTPIP |= ((1 << pipe) << HSTPIP_PRST_Pos) & HSTPIP_PRST; // put pipe in reset
 	USB_REG->HSTPIP &= ~(((1 << pipe) << HSTPIP_PRST_Pos) & HSTPIP_PRST); // remove pipe from reset
@@ -349,6 +418,9 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 		USB_REG->HSTPIPIER[pipe] = HSTPIPIER_CTRL_RXSTALLDES | HSTPIPIER_OVERFIES | HSTPIPIER_PERRES;
 		USB_REG->HSTIER |= (HSTISR_PEP_0 | (HSTISR_DMA_0 >> 1)) << pipe;
 
+		pipes[pipe].address = dev_addr;
+		pipes[pipe].endpoint = ep_desc->bEndpointAddress;
+
 		return true;
 	}
 
@@ -358,6 +430,17 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 
 bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *buffer, uint16_t buflen)
 {
+	uint8_t pipe = 0;
+	
+	if (dev_addr)
+	{
+		hw_pipe_find(dev_addr, ep_addr);
+		if (pipe >= EP_MAX)
+		{
+			return false;
+		}
+	}
+
 	if (ep_addr & TUSB_DIR_IN_MASK)
 	{
 		// to_read++;
@@ -379,7 +462,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 		// 	}
 		// 	_usb_h_save_x_param(pipe, count);
 		// }
-		uint8_t pipe = 0;
+
 		uint8_t *data =  EP_GET_FIFO_PTR(pipe, 8);
 
 		memcpy(buffer, data, buflen);
@@ -572,7 +655,7 @@ void hcd_int_handler(uint8_t rhport)
 				// /* Read byte count */
 				// n_rx = hri_usbhs_read_HSTPIPISR_PBYCT_bf(drv->hw, pi);
 				uint16_t to_read = (USB_REG->HSTPIPISR[pipe] & USBHS_HSTPIPISR_PBYCT_Msk) >> USBHS_HSTPIPISR_PBYCT_Pos;
-				hcd_event_xfer_complete(0, 0, to_read, XFER_RESULT_SUCCESS, true);
+				hcd_event_xfer_complete(hw_pipe_get_address(pipe), 0, to_read, XFER_RESULT_SUCCESS, true);
 			}
 			else
 			{
@@ -585,6 +668,8 @@ void hcd_int_handler(uint8_t rhport)
 
 				// 	hri_usbhs_write_HSTPIPINRQ_reg(drv->hw, pi, 0);
 				USB_REG->HSTPIPINRQ[pipe] = 0;
+				hcd_event_xfer_complete(0, 0, 0, XFER_RESULT_SUCCESS, true);
+				hcd_event_xfer_complete(0, 0, 0, XFER_RESULT_SUCCESS, true);
 
 			// 	_usb_h_end_transfer(pipe, USB_H_OK);
 			// 	return;

@@ -10,7 +10,9 @@ CFLAGS += \
   -D__SAME70Q21B__ \
   -DCFG_TUSB_MCU=OPT_MCU_SAMX7X \
   -Wno-error=unused-function \
-  -Wno-error=unused-variable
+  -Wno-error=unused-variable \
+  -O0 \
+  -g3
 
 # suppress following warnings from mcu driver
 CFLAGS += -Wno-error=unused-parameter -Wno-error=cast-align -Wno-error=cast-qual -Wno-error=redundant-decls
