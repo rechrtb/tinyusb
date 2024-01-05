@@ -669,8 +669,8 @@ void hcd_int_handler(uint8_t rhport)
 
 				// 	hri_usbhs_write_HSTPIPINRQ_reg(drv->hw, pi, 0);
 				USB_REG->HSTPIPINRQ[pipe] = 0;
-				hcd_event_xfer_complete(0, 0, 0, XFER_RESULT_SUCCESS, true);
-				hcd_event_xfer_complete(0, 0, 0, XFER_RESULT_SUCCESS, true);
+				hcd_event_xfer_complete(hw_pipe_get_address(pipe), 0, 0, XFER_RESULT_SUCCESS, true);
+				hcd_event_xfer_complete(hw_pipe_get_address(pipe), 0, 0, XFER_RESULT_SUCCESS, true);
 
 			// 	_usb_h_end_transfer(pipe, USB_H_OK);
 			// 	return;
@@ -688,8 +688,8 @@ void hcd_int_handler(uint8_t rhport)
 			// hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXOUTI);
 			USB_REG->HSTPIPIDR[pipe] = HSTPIPISR_TXOUTI;
 
-			hcd_event_xfer_complete(0, 0, 0, XFER_RESULT_SUCCESS, true);
-			hcd_event_xfer_complete(0, 0, 0, XFER_RESULT_SUCCESS, true);
+			hcd_event_xfer_complete(hw_pipe_get_address(pipe), 0, 0, XFER_RESULT_SUCCESS, true);
+			hcd_event_xfer_complete(hw_pipe_get_address(pipe), 0, 0, XFER_RESULT_SUCCESS, true);
 			return;
 		}
 	}
