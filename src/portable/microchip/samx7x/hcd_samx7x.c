@@ -434,7 +434,8 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 	
 	if (dev_addr)
 	{
-		hw_pipe_find(dev_addr, ep_addr);
+		uint8_t ep_num = ep_addr & (TUSB_DIR_IN_MASK - 1);
+		pipe = hw_pipe_find(dev_addr, ep_num == 0 ? ep_num : ep_addr);
 		if (pipe >= EP_MAX)
 		{
 			return false;
