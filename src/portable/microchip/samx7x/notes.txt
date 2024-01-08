@@ -1,0 +1,590 @@
+atmel_start_init
+    system_init
+        USB_HOST_INSTANCE_init
+            USB_HOST_INSTANCE_CLOCK_init
+                _pmc_enable_periph_clock - called in board_init
+                hri_pmc_write_SCER_reg(PMC, PMC_SCER_USBCLK); - called in board_init
+            _usbhcd_prvt_init
+                _usb_h_init
+                    
+
+            usb_h_init
+
+
+
+ASF BASED
+
+esp32s3> USBD Bus Reset : Full Speed
+
+USBD Setup Received 80 06 00 01 00 00 12 00 
+  Get Descriptor Device
+  Queue EP 80 with 18 bytes ...
+USBD Xfer Complete on EP 80 with 18 bytes
+  Queue EP 00 with 0 bytes ...
+USBD Xfer Complete on EP 00 with 0 bytes
+
+USBD Setup Received 00 05 01 00 00 00 00 00 
+  Set Address
+USBD Xfer Complete on EP 80 with 0 bytes
+
+USBD Setup Received 80 06 00 02 00 00 09 00 
+  Get Descriptor Configuration[0]
+  Queue EP 80 with 9 bytes ...
+USBD Xfer Complete on EP 80 with 9 bytes
+  Queue EP 00 with 0 bytes ...
+USBD Xfer Complete on EP 00 with 0 bytes
+
+USBD Setup Received 80 06 00 02 00 00 20 00 
+  Get Descriptor Configuration[0]
+  Queue EP 80 with 32 bytes ...
+USBD Xfer Complete on EP 80 with 32 bytes
+  Queue EP 00 with 0 bytes ...
+USBD Xfer Complete on EP 00 with 0 bytes
+
+USBD Setup Received 00 09 01 00 00 00 00 00 
+  Set Configuration
+  Open EP 01 with Size = 64
+  Open EP 81 with Size = 64
+    Allocated 64 bytes at offset 896  Queue EP 01 with 31 bytes ...
+  MSC opened
+  Bind EP 01 to driver id 0
+  Bind EP 81 to driver id 0
+  Queue EP 80 with 0 bytes ...
+USBD Xfer Complete on EP 80 with 0 bytes
+
+USBD Setup Received A1 FE 00 00 00 00 01 00 
+  MSC control request
+  MSC Get Max Lun
+  Queue EP 80 with 1 bytes ...
+USBD Xfer Complete on EP 80 with 1 bytes
+  MSC control complete
+  Queue EP 00 with 0 bytes ...
+USBD Xfer Complete on EP 00 with 0 bytes
+USBD Xfer Complete on EP 01 with 31 bytes
+  MSC xfer callback
+  SCSI CBW is not valid
+    Stall EP 81
+    Stall EP 01
+
+USBD Setup Received 02 01 00 00 81 00 00 00 
+  Clear Feature
+    Clear Stall EP 81
+  MSC control request
+    Stall EP 81
+  Queue EP 80 with 0 bytes ...
+USBD Xfer Complete on EP 80 with 0 b
+
+
+
+
+RP2040
+esp32s3> USBD Bus Reset : Full Speed
+
+USBD Setup Received 80 06 00 01 00 00 08 00 
+  Get Descriptor Device
+  Queue EP 80 with 8 bytes ...
+USBD Xfer Complete on EP 80 with 8 bytes
+  Queue EP 00 with 0 bytes ...
+USBD Xfer Complete on EP 00 with 0 bytes
+
+USBD Setup Received 00 05 01 00 00 00 00 00 
+  Set Address
+USBD Xfer Complete on EP 80 with 0 bytes
+
+USBD Setup Received 80 06 00 01 00 00 12 00 
+  Get Descriptor Device
+  Queue EP 80 with 18 bytes ...
+USBD Xfer Complete on EP 80 with 18 bytes
+  Queue EP 00 with 0 bytes ...
+USBD Xfer Complete on EP 00 with 0 bytes
+
+USBD Setup Received 80 06 00 02 00 00 09 00 
+  Get Descriptor Configuration[0]
+  Queue EP 80 with 9 bytes ...
+USBD Xfer Complete on EP 80 with 9 bytes
+  Queue EP 00 with 0 bytes ...
+USBD Xfer Complete on EP 00 with 0 bytes
+
+USBD Setup Received 80 06 00 02 00 00 20 00 
+  Get Descriptor Configuration[0]
+  Queue EP 80 with 32 bytes ...
+USBD Xfer Complete on EP 80 with 32 bytes
+  Queue EP 00 with 0 bytes ...
+USBD Xfer Complete on EP 00 with 0 bytes
+
+USBD Setup Received 00 09 01 00 00 00 00 00 
+  Set Configuration
+  Open EP 01 with Size = 64
+  Open EP 81 with Size = 64
+    Allocated 64 bytes at offset 896  Queue EP 01 with 31 bytes ...
+  MSC opened
+  Bind EP 01 to driver id 0
+  Bind EP 81 to driver id 0
+  Queue EP 80 with 0 bytes ...
+USBD Xfer Complete on EP 80 with 0 bytes
+
+USBD Setup Received A1 FE 00 00 00 00 01 00 
+  MSC control request
+  MSC Get Max Lun
+  Queue EP 80 with 1 bytes ...
+USBD Xfer Complete on EP 80 with 1 bytes
+  MSC control complete
+  Queue EP 00 with 0 bytes ...
+USBD Xfer Complete on EP 00 with 0 bytes
+USBD Xfer Complete on EP 01 with 31 bytes
+  MSC xfer callback
+  SCSI Command [Lun0]: Test Unit Ready
+  Queue EP 81 with 13 bytes ...
+USBD Xfer Complete on EP 81 with 13 bytes
+  MSC xfer callback
+  SCSI Status [Lun0] = 0
+  Queue EP 01 with 31 bytes ...
+USBD Xfer Complete on EP 01 with 31 bytes
+  MSC xfer callback
+  SCSI Command [Lun0]: Read Capacity10
+  Queue EP 81 with 8 bytes ...
+USBD Xfer Complete on EP 81 with 8 bytes
+  MSC xfer callback
+  SCSI Data [Lun0]
+  Queue EP 81 with 13 bytes ...
+USBD Xfer Complete on EP 81 with 13 bytes
+  MSC xfer callback
+  SCSI Status [Lun0] = 0
+  Queue EP 01 with 31 bytes ...
+USBD Xfer Complete on EP 01 with 31 bytes
+  MSC xfer callback
+  SCSI Command [Lun0]: Inquiry
+  Queue EP 81 with 36 bytes ...
+USBD Xfer Complete on EP 81 with 36 bytes
+  MSC xfer callback
+  SCSI Data [Lun0]
+  Queue EP 81 with 13 bytes ...
+USBD Xfer Complete on EP 81 with 13 bytes
+  MSC xfer callback
+  SCSI Status [Lun0] = 0
+  Queue EP 01 with 31 bytes ...
+
+
+
+
+
+
+
+hcd_init()
+hcd_int_enable()
+    USBD Bus Reset : Full Speed
+hcd_port_reset()
+hcd_port_reset_end()
+hcd_port_connect_status()
+hcd_port_speed_get()
+hcd_edpt_open()
+hcd_setup_send()
+    hcd_port_speed_get()
+hcd_edpt_xfer()
+    hcd_port_speed_get()
+        USBD Setup Received 80 06 00 01 00 00 08 00 
+            Get Descriptor Device
+            Queue EP 80 with 8 bytes ...
+            USBD Xfer Complete on EP 80 with 8 bytes
+            Queue EP 00 with 0 bytes ...
+
+
+
+[8]
+18 '\022'
+1 '\001'
+0 '\000'
+2 '\002'
+239 '\357'
+2 '\002'
+1 '\001'
+64 '@'
+
+
+
+
+
+
+
+
+rp2040 full log:
+
+esp32s3> 
+>>>>>>>>>>>>>>>>>>>>>>
+
+----------------------
+
+>>>>>>>>>>>>>>>>>>>>>>
+TinyUSB Host CDC MSC HID Example
+USBH init on controller 0
+sizeof(usbh_device_t) = 78
+sizeof(hcd_event_t) = 12
+sizeo
+----------------------
+
+>>>>>>>>>>>>>>>>>>>>>>
+f(_ctrl_xfer) = 24
+sizeof(tuh_xfer_t) = 24
+CDC init
+MSC init
+HID init
+HUB init
+sizeof(hw_endpoint_t) = 36
+
+----------------------
+USBD Bus Reset : Full Speed
+
+>>>>>>>>>>>>>>>>>>>>>>
+[0:] USBH DEVICE ATTACH
+
+----------------------
+
+>>>>>>>>>>>>>>>>>>>>>>
+Full Speed
+[0:0] Open EP0 with Size = 8
+Get 8 byte of Device Descriptor
+[0:0] Get Descriptor: 80 06 00 01 00 00 08 00
+----------------------
+
+USBD Setup Received 
+>>>>>>>>>>>>>>>>>>>>>>
+ 
+Transfer complete
+on EP 00 with 8 bytes
+
+----------------------
+80 06 00 01 00 00 08 00 
+  Get Descriptor Device
+  Queue EP 80 with 8 bytes ...
+USBD Xfer Complete on EP 80 with 8 bytes
+  Queue EP 00 with 0 bytes ...
+
+>>>>>>>>>>>>>>>>>>>>>>
+Buffer complete
+Transfer complete
+on EP 80 with 8 bytes
+[0:0] Control data:
+  0000:  12 01 00 02 EF 02 01 40        
+----------------------
+USBD Xfer Complete 
+>>>>>>>>>>>>>>>>>>>>>>
+                  |.......@|
+Buffer complete
+Transfer complete
+on EP 00 with 0 bytes
+
+Set Address = 1
+[0:0] Set Ad
+----------------------
+on EP 00 with 0 bytes
+
+>>>>>>>>>>>>>>>>>>>>>>
+dress: 00 05 01 00 00 00 00 00 
+Transfer complete
+on EP 00 with 8 bytes
+
+----------------------
+
+USBD Setup Received 00 05 01 00 00 00 00 00 
+  Set Address
+USBD Xfer Complete on EP 80 with 0 bytes
+
+>>>>>>>>>>>>>>>>>>>>>>
+Buffer complete
+Transfer complete
+on EP 80 with 0 bytes
+
+[0:1] Open EP0 with Size = 64
+Get Device Descriptor
+[0:1]
+----------------------
+
+USBD Setup Received 
+>>>>>>>>>>>>>>>>>>>>>>
+ Get Descriptor: 80 06 00 01 00 00 12 00 
+Transfer complete
+on EP 00 with 8 bytes
+
+----------------------
+80 06 00 01 00 00 12 00 
+  Get Descriptor Device
+  Queue EP 80 with 18 bytes ...
+USBD Xfer Complete on EP 80 with 18 bytes
+
+>>>>>>>>>>>>>>>>>>>>>>
+Buffer complete
+Transfer complete
+on EP 80 with 18 bytes
+[0:1] Control data:
+  0000:  12 01 00 02 EF 02 01 40 3A 30 
+----------------------
+  Queue EP 00 with 0 bytes ...
+
+>>>>>>>>>>>>>>>>>>>>>>
+02 40 00 01 01 02  |.......@:0.@....|
+  0010:  03 01                                            |..|
+
+----------------------
+USBD Xfer Complete 
+>>>>>>>>>>>>>>>>>>>>>>
+Buffer complete
+Transfer complete
+on EP 00 with 0 bytes
+
+Get Configuration[0] Descriptor (9 bytes)
+[0:1] Get Descri
+----------------------
+on EP 00 with 0 bytes
+
+>>>>>>>>>>>>>>>>>>>>>>
+ptor: 80 06 00 02 00 00 09 00 
+Transfer complete
+on EP 00 with 8 bytes
+
+----------------------
+
+USBD Setup Received 80 06 00 02 00 00 09 00 
+  Get Descriptor Configuration[0]
+  Queue EP 80 with 9 bytes ...
+USBD Xfer Complete on EP 80 with 9 bytes
+
+>>>>>>>>>>>>>>>>>>>>>>
+Buffer complete
+Transfer complete
+on EP 80 with 9 bytes
+[0:1] Control data:
+  0000:  09 02 20 00 01 01 00 A0 32     
+----------------------
+  Queue EP 00 with 0 bytes ...
+
+>>>>>>>>>>>>>>>>>>>>>>
+                  |.. .....2|
+
+----------------------
+USBD Xfer Complete 
+>>>>>>>>>>>>>>>>>>>>>>
+Buffer complete
+Transfer complete
+on EP 00 with 0 bytes
+
+Get Configuration[0] Descriptor
+[0:1] Get Descriptor: 80 0
+----------------------
+on EP 00 with 0 bytes
+
+>>>>>>>>>>>>>>>>>>>>>>
+6 00 02 00 00 20 00 
+Transfer complete
+on EP 00 with 8 bytes
+
+----------------------
+
+USBD Setup Received 80 06 00 02 00 00 20 00 
+  Get Descriptor Configuration[0]
+  Queue EP 80 with 32 bytes ...
+USBD Xfer Complete on EP 80 with 32 bytes
+  Queue EP 00 with 0 bytes ...
+
+>>>>>>>>>>>>>>>>>>>>>>
+Buffer complete
+Transfer complete
+on EP 80 with 32 bytes
+[0:1] Control data:
+  0000:  09 02 20 00 01 01 00 A0 32 09 
+----------------------
+USBD Xfer Complete on EP 00 with 0 bytes
+
+>>>>>>>>>>>>>>>>>>>>>>
+04 00 00 02 08 06  |.. .....2.......|
+  0010:  50 00 07 05 01 02 40 00 00 07 05 81 02 40 00 00  |P.....@......@..|
+Buf
+----------------------
+
+>>>>>>>>>>>>>>>>>>>>>>
+fer complete
+Transfer complete
+on EP 00 with 0 bytes
+
+  Open EP 01 with Size = 64
+Allocate bulk ep 0
+  Open EP 81 
+----------------------
+
+USBD Setup Received 
+>>>>>>>>>>>>>>>>>>>>>>
+with Size = 64
+Allocate bulk ep 1
+  MSC opened
+  Bind EP 01 to driver id 1
+  Bind EP 81 to driver id 1
+Set Configur
+----------------------
+00 
+>>>>>>>>>>>>>>>>>>>>>>
+ation = 1
+[0:1] Set Configuration: 00 09 01 00 00 00 00 00 
+Transfer complete
+on EP 00 with 8 bytes
+
+----------------------
+09 01 00 00 00 00 00 
+  Set Configuration
+  Open EP 01 with Size = 64
+  Open EP 81 with Size = 64
+    Allocated 64 bytes at offset 896  Queue EP 01 with 31 bytes ...
+  MSC opened
+  Bind EP 01 to driver id 0
+  Bind EP 81 to driver id 0
+  Queue EP 80 with 0 bytes ...
+USBD Xfer Complete on EP 80 with 0 bytes
+
+>>>>>>>>>>>>>>>>>>>>>>
+Buffer complete
+Transfer complete
+on EP 80 with 0 bytes
+
+Device configured
+MSC set config: itf = 0
+MSC Get Max Lun
+----------------------
+
+USBD Setup Received 
+>>>>>>>>>>>>>>>>>>>>>>
+
+[0:1] Unknown Request: A1 FE 00 00 00 00 01 00 
+Transfer complete
+on EP 00 with 8 bytes
+
+----------------------
+A1 FE 00 00 00 00 01 00 
+  MSC control request
+  MSC Get Max Lun
+  Queue EP 80 with 1 bytes ...
+USBD Xfer Complete on EP 80 with 1 bytes
+  MSC control complete
+  Queue EP 00 with 0 bytes ...
+USBD Xfer Complete on EP 00 with 0 bytes
+
+>>>>>>>>>>>>>>>>>>>>>>
+Buffer complete
+Transfer complete
+on EP 80 with 1 bytes
+[0:1] Control data:
+  0000:  00                             
+----------------------
+USBD Xfer Complete 
+>>>>>>>>>>>>>>>>>>>>>>
+                  |.|
+Buffer complete
+Transfer complete
+on EP 00 with 0 bytes
+
+SCSI Test Unit Ready
+  Queue EP 01 
+----------------------
+on EP 01 with 31 bytes
+
+>>>>>>>>>>>>>>>>>>>>>>
+with 31 bytes ... OK
+Buffer complete
+on EP 01 with 31 bytes
+MSC xfer callback
+  Queue EP 81 with 13 bytes ... OK
+
+----------------------
+  MSC xfer callback
+  SCSI Command [Lun0]: Test Unit Ready
+  Queue EP 81 with 13 bytes ...
+USBD Xfer Complete on EP 81 with 13 bytes
+
+>>>>>>>>>>>>>>>>>>>>>>
+Buffer complete
+on EP 81 with 13 bytes
+MSC xfer callback
+SCSI Read Capacity
+  Queue EP 01 with 31 bytes ... OK
+
+----------------------
+  MSC xfer callback
+  SCSI Status [Lun0] = 0
+  Queue EP 01 with 31 bytes ...
+USBD Xfer Complete on EP 01 with 31 bytes
+  MSC xfer callback
+
+>>>>>>>>>>>>>>>>>>>>>>
+Buffer complete
+on EP 01 with 31 bytes
+MSC xfer callback
+  Queue EP 81 with 8 bytes ... OK
+
+----------------------
+  SCSI Command [Lun0]: Read Capacity10
+  Queue EP 81 with 8 bytes ...
+USBD Xfer Complete on EP 81 with 8 bytes
+
+>>>>>>>>>>>>>>>>>>>>>>
+Buffer complete
+on EP 81 with 8 bytes
+MSC xfer callback
+  Queue EP 81 with 13 bytes ... OK
+
+----------------------
+  MSC xfer callback
+  SCSI Data [Lun0]
+  Queue EP 81 with 13 bytes ...
+USBD Xfer Complete on EP 81 with 13 bytes
+  MSC xfer callback
+  SCSI Status [Lun0] = 0
+  Queue EP 01 with 31 bytes ...
+
+>>>>>>>>>>>>>>>>>>>>>>
+Buffer complete
+on EP 81 with 13 bytes
+MSC xfer callback
+A MassStorage device is mounted
+  Queue EP 01 with 31 bytes
+----------------------
+USBD Xfer Complete 
+>>>>>>>>>>>>>>>>>>>>>>
+ ... OK
+A device with address 1 is mounted
+Buffer complete
+on EP 01 with 31 bytes
+MSC xfer callback
+  Queue EP 81 with 36 bytes ... OK
+
+----------------------
+on EP 01 with 31 bytes
+  MSC xfer callback
+  SCSI Command [Lun0]: Inquiry
+  Queue EP 81 with 36 bytes ...
+USBD Xfer Complete on EP 81 with 36 bytes
+
+>>>>>>>>>>>>>>>>>>>>>>
+Buffer complete
+on EP 81 with 36 bytes
+MSC xfer callback
+  Queue EP 81 with 13 bytes ... OK
+
+----------------------
+  MSC xfer callback
+  SCSI Data [Lun0]
+  Queue EP 81 with 13 bytes ...
+USBD Xfer Complete on EP 81 with 13 bytes
+
+>>>>>>>>>>>>>>>>>>>>>>
+Buffer complete
+on EP 81 with 13 bytes
+MSC xfer callback
+TinyUSB  Flash Storage    rev 0.1 
+Disk Size: 0 MB
+Block C
+----------------------
+  MSC xfer callback
+  SCSI Status [Lun0] = 0
+  Queue EP 01 with 31 bytes ...
+
+>>>>>>>>>>>>>>>>>>>>>>
+ount = 2000, Block Size: 512
+
+----------------------

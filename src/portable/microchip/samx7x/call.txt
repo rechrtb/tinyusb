@@ -1,0 +1,33 @@
+atmel_start_init
+    system_init
+        USB_HOST_INSTANCE_init
+            USB_HOST_INSTANCE_CLOCK_init
+                _pmc_enable_periph_clock - called in board_init
+                hri_pmc_write_SCER_reg(PMC, PMC_SCER_USBCLK); - called in board_init
+            _usbhcd_prvt_init
+                _usb_h_init
+
+
+            usb_h_init
+
+
+
+
+
+
+
+
+Datasheet:
+
+- Before enabling the USB clock in the Power Management Controller, the USBHS must be enabled (by
+writing a one to the USBHS_CTRL.USBE bit and a zero to the USBHS_CTRL.FRZCLK bit).
+
+- In Low-power mode:
+    select either the PLLA or the UPLL (previously set to ON), and program the PMC_USB register
+    (source selection and divider).
+    Enable the USBHS peripheral clock (PMC_PCER).
+    Put the USBHS in Low-power mode (SPDCONF = 1).
+    Enable the USBHS (UIMOD, USBE = 1, FRZCLK = 0).
+    Enable the USBCK bit (PMC_SCER).
+
+    
