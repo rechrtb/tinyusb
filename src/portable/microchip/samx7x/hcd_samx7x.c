@@ -239,27 +239,14 @@ bool hcd_init(uint8_t rhport)
 
 void hcd_device_close(uint8_t rhport, uint8_t dev_addr)
 {
-	(void) rhport;
-	uint8_t pipe = 0;
-
-	// if (dev_addr)
-	// {
-	// 	pipe = hw_pipe_find(dev_addr, 0xFF);
-	// 	if (pipe >= EP_MAX)
-	// 	{
-	// 		return false;
-	// 	}
-	// }
-
-	USB_REG->HSTPIP |= ((1 << pipe) << HSTPIP_PRST_Pos) & HSTPIP_PRST; // put pipe in reset
-	USB_REG->HSTPIP &= ~(((1 << pipe) << HSTPIP_PRST_Pos) & HSTPIP_PRST); // remove pipe from reset
-//  --- _usb_h_disable ---
-// 	ASSERT(drv && drv->hw);
-// 	hri_usbhs_set_CTRL_reg(drv->hw, USBHS_CTRL_FRZCLK);
-// 	hri_usbhs_clear_CTRL_reg(drv->hw, USBHS_CTRL_USBE);
-// #if CONF_USB_H_VBUS_CTRL
-// 	CONF_USB_H_VBUS_CTRL_FUNC(drv, 1, false);
-// #endif
+	// Reset every pipe associated with the device
+	for (uint8_t i = 0; i < EP_MAX; i++)
+	{
+		if (hw_pipe_get_address(rhport, i) == dev_addr)
+		{
+			hw_pipe_reset(rhport, i);
+		}
+	}
 }
 
 bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet[8])
