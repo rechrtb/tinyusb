@@ -58,27 +58,37 @@ void breakpoint(void)
 	a++;
 }
 
-static uint8_t hw_pipe_get_endpoint(uint8_t pipe)
+static uint8_t hw_pipe_get_endpoint(uint8_t rhport, uint8_t pipe)
 {
+	(void) rhport;
 	return USB_REG->HSTPIPCFG[pipe] & HSTPIPCFG_PEPNUM;
-	// return pipes[pipe].endpoint;
 }
 
-static uint8_t hw_pipe_get_address(uint8_t pipe)
+static uint8_t hw_pipe_get_address(uint8_t rhport, uint8_t pipe)
 {
+	(void) rhport;
 	uint8_t index = pipe >> 2;
 	uint8_t pos = (pipe & 0x3) << 3;
 	uint32_t reg = (&USB_REG->HSTADDR1)[index];
 	return (reg & (0x7f << pos)) >> pos;
-	// return pipes[pipe].address;
 }
 
-static uint8_t hw_pipe_find(uint8_t address, uint8_t endpoint)
+static void hw_set_token(uint8_t rhport, uint8_t pipe, uint8_t token)
 {
-	for (int i = 1; i < EP_MAX; i++)
+	(void) rhport;
+	uint32_t tmp = USB_REG->HSTPIPCFG[pipe];
+	tmp &= ~HSTPIPCFG_PTOKEN;
+	tmp |= HSTPIPCFG_PTOKEN & ((uint32_t)(token) << HSTPIPCFG_PTOKEN_Pos);
+	USB_REG->HSTPIPCFG[pipe] = tmp;
+}
+
+static uint8_t hw_pipe_find(uint8_t rhport, uint8_t address, uint8_t endpoint)
+{
+	(void) rhport;
+	for (uint8_t i = 1; i < EP_MAX; i++)
 	{
-		if (hw_pipe_get_address(i) == address &&
-			(endpoint == 0xFF || hw_pipe_get_endpoint(i) == endpoint))
+		if (hw_pipe_get_address(rhport, i) == address &&
+			hw_pipe_get_endpoint(rhport, i) == endpoint)
 		{
 			return i;
 		}
@@ -86,11 +96,12 @@ static uint8_t hw_pipe_find(uint8_t address, uint8_t endpoint)
 	return EP_MAX;
 }
 
-static uint8_t hw_pipe_find_free(void)
+static uint8_t hw_pipe_find_free(uint8_t rhport)
 {
-	for (int i = 1; i < EP_MAX; i++)
+	(void) rhport;
+	for (uint8_t i = 1; i < EP_MAX; i++)
 	{
-		if (!hw_pipe_get_address(i))
+		if (!hw_pipe_get_address(rhport, i))
 		{
 			return i;
 		}
@@ -98,18 +109,21 @@ static uint8_t hw_pipe_find_free(void)
 	return EP_MAX;
 }
 
-static void hw_reset_pipe(uint8_t rhport, uint8_t pipe)
+static void hw_pipe_reset(uint8_t rhport, uint8_t pipe)
 {
 	(void) rhport;
 	memset(&pipes[pipe], 0, sizeof(pipes[pipe]));
+
+	USB_REG->HSTPIP |= ((1 << pipe) << HSTPIP_PRST_Pos) & HSTPIP_PRST; // put pipe in reset
+	USB_REG->HSTPIP &= ~(((1 << pipe) << HSTPIP_PRST_Pos) & HSTPIP_PRST); // remove pipe from reset
 }
 
-static void hw_reset_pipes(uint8_t rhport)
+static void hw_pipes_reset(uint8_t rhport)
 {
-	// TODO: implement
-	for (int i = 0; i < EP_MAX; i++)
+	(void) rhport;
+	for (uint8_t i = 0; i < EP_MAX; i++)
 	{
-		hw_reset_pipe(rhport, i);
+		hw_pipe_reset(rhport, i);
 	}
 }
 
@@ -152,7 +166,7 @@ bool hcd_init(uint8_t rhport)
 // 	drv->hw   = hw;
 
 // 	_usb_h_reset_pipes(drv, false);
-	hw_reset_pipes(rhport);
+	hw_pipes_reset(rhport);
 
 // 	pd->suspend_start   = 0;
 // 	pd->resume_start    = 0;
@@ -249,39 +263,30 @@ void hcd_device_close(uint8_t rhport, uint8_t dev_addr)
 
 bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet[8])
 {
-	// struct usb_h_desc *drv  = pipe->hcd;
-	// uint8_t            pi   = _usb_h_pipe_i(pipe);
-	// uint8_t *          src8 = pipe->x.ctrl.setup;
-	// volatile uint8_t * dst8 = (volatile uint8_t *)&_usbhs_get_pep_fifo_access(pi, 8);
-	// uint8_t            i;
-
-	// hri_usbhs_write_HSTPIPCFG_PTOKEN_bf(drv->hw, pi, USBHS_HSTPIPCFG_PTOKEN_SETUP_Val);
-	uint8_t pipe = 0; // TODO: find the correct pipe, maybe using HOSTADDRx registers.
+	uint8_t pipe = 0;
 
 	if (dev_addr)
 	{
-		pipe = hw_pipe_find(dev_addr, 0xFF);
+		pipe = hw_pipe_find(rhport, dev_addr, 0);
 		if (pipe >= EP_MAX)
 		{
 			return false;
 		}
 	}
 
-	uint32_t tmp = USB_REG->HSTPIPCFG[pipe];
-	tmp &= ~HSTPIPCFG_PTOKEN;
-	tmp |= HSTPIPCFG_PTOKEN & ((uint32_t)(HSTPIPCFG_PTOKEN_SETUP_Val) << HSTPIPCFG_PTOKEN_Pos);
-	USB_REG->HSTPIPCFG[pipe] = tmp;
-
+	// hri_usbhs_write_HSTPIPCFG_PTOKEN_bf(drv->hw, pi, USBHS_HSTPIPCFG_PTOKEN_SETUP_Val);
+	hw_set_token(rhport, pipe, HSTPIPCFG_PTOKEN_SETUP_Val);
 	// hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXSTPI);
-	USB_REG->HSTPIPICR[pipe] = HSTPIPISR_CTRL_TXSTPI;
-
-	const uint8_t *src8 = setup_packet;
-	uint8_t *dst8 = EP_GET_FIFO_PTR(pipe, 8);
+	USB_REG->HSTPIPICR[pipe] = HSTPIPICR_CTRL_TXSTPIC;
+	// for (i = 0; i < 8; i++) {
+	// 	*dst8++ = *src8++;
+	// }
+	const uint8_t *src = setup_packet;
+	uint8_t *dst = EP_GET_FIFO_PTR(pipe, 8);
 	for (size_t i = 0; i < 8; i++)
 	{
-		*dst8++ = *src8++;
+		*dst++ = *src++;
 	}
-
 	// hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIMR_TXSTPE);
 	USB_REG->HSTPIPIER[pipe] = HSTPIPIER_CTRL_TXSTPES;
 	// hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIMR_FIFOCON | USBHS_HSTPIPIMR_PFREEZE);
@@ -347,18 +352,17 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 {
 	// Reset the pipe
 	uint8_t pipe = 0; // TODO: find available pipe
-	
+
 	if (dev_addr)
 	{
-		pipe = hw_pipe_find_free();
+		pipe = hw_pipe_find_free(rhport);
 		if (pipe >= EP_MAX)
 		{
 			return false;
 		}
 	}
 
-	USB_REG->HSTPIP |= ((1 << pipe) << HSTPIP_PRST_Pos) & HSTPIP_PRST; // put pipe in reset
-	USB_REG->HSTPIP &= ~(((1 << pipe) << HSTPIP_PRST_Pos) & HSTPIP_PRST); // remove pipe from reset
+	hw_pipe_reset(rhport, pipe);
 
 	// Configure the pipe
 	USB_REG->HSTPIP |= ((1 << pipe) << HSTPIP_PEN_Pos) & HSTPIP_PEN; // enable pipe
@@ -431,11 +435,11 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *buffer, uint16_t buflen)
 {
 	uint8_t pipe = 0;
-	
+
 	if (dev_addr)
 	{
 		uint8_t ep_num = ep_addr & (TUSB_DIR_IN_MASK - 1);
-		pipe = hw_pipe_find(dev_addr, ep_num == 0 ? ep_num : ep_addr);
+		pipe = hw_pipe_find(rhport, dev_addr, ep_num == 0 ? ep_num : ep_addr);
 		if (pipe >= EP_MAX)
 		{
 			return false;
@@ -588,8 +592,6 @@ void hcd_int_handler(uint8_t rhport)
 		uint8_t pipe = 23 - __CLZ(isr & USBHS_HSTISR_PEP__Msk);
 		uint32_t pipisr = USB_REG->HSTPIPISR[pipe];
 
-		volatile uint32_t err = USB_REG->HSTPIPERR[pipe];
-
 		if (pipisr & HSTPIPISR_CTRL_TXSTPI)
 		{
 			// hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXSTPI);
@@ -627,10 +629,10 @@ void hcd_int_handler(uint8_t rhport)
 		}
 
 		/* RXIN: Full packet received */
-		if (pipisr & USBHS_HSTPIPISR_RXINI) {
-
+		if (pipisr & HSTPIPISR_RXINI)
+		{
 			// hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_RXINI | USBHS_HSTPIPISR_SHORTPACKETI);
-			USB_REG->HSTPIPICR[pipe] = USBHS_HSTPIPICR_RXINIC | USBHS_HSTPIPICR_SHORTPACKETIC;
+			USB_REG->HSTPIPICR[pipe] = HSTPIPICR_RXINIC | HSTPIPICR_SHORTPACKETIC;
 
 			// /* In case of low USB speed and with a high CPU frequency,
 			//  * a ACK from host can be always running on USB line
@@ -640,7 +642,11 @@ void hcd_int_handler(uint8_t rhport)
 			// 	while (!hri_usbhs_get_HSTPIPIMR_reg(drv->hw, pi, USBHS_HSTPIPIMR_PFREEZE)) {
 			// 	}
 			// }
-			
+			if (!(USB_REG->HSTPIPINRQ[pipe]))
+			{
+				while(!(USB_REG->HSTPIPIMR[pipe] & HSTPIPIMR_PFREEZE)) {}
+			}
+
 			// _usb_h_in(p);
 			// uint8_t            pi  = _usb_h_pipe_i(pipe);
 			// struct usb_h_desc *drv = (struct usb_h_desc *)pipe->hcd;
@@ -656,7 +662,7 @@ void hcd_int_handler(uint8_t rhport)
 				// /* Read byte count */
 				// n_rx = hri_usbhs_read_HSTPIPISR_PBYCT_bf(drv->hw, pi);
 				uint16_t to_read = (USB_REG->HSTPIPISR[pipe] & USBHS_HSTPIPISR_PBYCT_Msk) >> USBHS_HSTPIPISR_PBYCT_Pos;
-				hcd_event_xfer_complete(hw_pipe_get_address(pipe), 0, to_read, XFER_RESULT_SUCCESS, true);
+				hcd_event_xfer_complete(hw_pipe_get_address(rhport, pipe), 0, to_read, XFER_RESULT_SUCCESS, true);
 			}
 			else
 			{
@@ -669,8 +675,9 @@ void hcd_int_handler(uint8_t rhport)
 
 				// 	hri_usbhs_write_HSTPIPINRQ_reg(drv->hw, pi, 0);
 				USB_REG->HSTPIPINRQ[pipe] = 0;
-				hcd_event_xfer_complete(hw_pipe_get_address(pipe), 0, 0, XFER_RESULT_SUCCESS, true);
-				hcd_event_xfer_complete(hw_pipe_get_address(pipe), 0, 0, XFER_RESULT_SUCCESS, true);
+
+				hcd_event_xfer_complete(hw_pipe_get_address(rhport, pipe), 0, 0, XFER_RESULT_SUCCESS, true);
+				hcd_event_xfer_complete(hw_pipe_get_address(rhport, pipe), 0, 0, XFER_RESULT_SUCCESS, true);
 
 			// 	_usb_h_end_transfer(pipe, USB_H_OK);
 			// 	return;
@@ -688,8 +695,8 @@ void hcd_int_handler(uint8_t rhport)
 			// hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXOUTI);
 			USB_REG->HSTPIPIDR[pipe] = HSTPIPISR_TXOUTI;
 
-			hcd_event_xfer_complete(hw_pipe_get_address(pipe), 0, 0, XFER_RESULT_SUCCESS, true);
-			hcd_event_xfer_complete(hw_pipe_get_address(pipe), 0, 0, XFER_RESULT_SUCCESS, true);
+			hcd_event_xfer_complete(hw_pipe_get_address(rhport, pipe), 0, 0, XFER_RESULT_SUCCESS, true);
+			hcd_event_xfer_complete(hw_pipe_get_address(rhport, pipe), 0, 0, XFER_RESULT_SUCCESS, true);
 			return;
 		}
 	}
