@@ -467,10 +467,12 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 		// 	}
 		// 	_usb_h_save_x_param(pipe, count);
 		// }
-
-		uint8_t *data =  EP_GET_FIFO_PTR(pipe, 8);
-
-		memcpy(buffer, data, buflen);
+		const uint8_t *src = EP_GET_FIFO_PTR(pipe, 8);
+		uint8_t *dst = buffer;
+		for (size_t i = 0; i < buflen; i++)
+		{
+			*dst++ = *src++;
+		}
 
 		// /* Clear FIFO status */
 		// hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIDR_FIFOCONC);
