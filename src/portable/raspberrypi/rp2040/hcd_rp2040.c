@@ -556,6 +556,14 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
 
   TU_ASSERT(ep);
 
+  volatile uint8_t ep2 = ep_addr;
+  ep2 += 1;
+  ep2 -= 1;
+
+  volatile uint8_t dev2 = dev_addr;
+  dev2 += 1;
+  dev2 -= 1;
+
   // EP should be inactive
   assert(!ep->active);
 
