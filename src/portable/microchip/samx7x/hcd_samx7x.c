@@ -245,6 +245,7 @@ void hcd_device_close(uint8_t rhport, uint8_t dev_addr)
 		if (hw_pipe_get_address(rhport, i) == dev_addr)
 		{
 			hw_pipe_reset(rhport, i);
+			USB_REG->HSTPIP &= ~(((1 << i) << HSTPIP_PEN_Pos) & HSTPIP_PEN); // disable pipe
 		}
 	}
 }
