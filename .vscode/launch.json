@@ -39,7 +39,7 @@
         "request": "launch",
         "name": "Pi_Pico_USBH",
         "cwd": "${workspaceRoot}",
-        "executable": "${workspaceRoot}/examples/host/cdc_msc_hid/_build/raspberry_pi_pico/cdc_msc_hid.elf",
+        "executable": "${workspaceRoot}/examples/host/msc_file_explorer/_build/raspberry_pi_pico/msc_file_explorer.elf",
         "serverpath": "/usr/bin/JLinkGDBServer", 
         "servertype": "jlink",
         "device": "RP2040_M0_0",

@@ -11,7 +11,7 @@ CFLAGS += \
   -DCFG_TUSB_MCU=OPT_MCU_SAMX7X \
   -Wno-error=unused-function \
   -Wno-error=unused-variable \
-  -O0 \
+  -Og \
   -g3
 
 # suppress following warnings from mcu driver

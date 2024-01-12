@@ -189,6 +189,11 @@ uint32_t board_button_read(void)
 #endif
 }
 
+void board_usb_enable(bool state)
+{
+  (void) state;
+}
+
 int board_uart_read(uint8_t* buf, int len)
 {
 #ifdef UART_DEV
