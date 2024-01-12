@@ -461,8 +461,6 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 		pipes[pipe].to_rx = buflen;
 		pipes[pipe].rxed = 0;
 
-		++ints_i;
-		ints[ints_i - 1] = 201;
 		// hri_usbhs_write_HSTPIPCFG_PTOKEN_bf(drv->hw, pi, USBHS_HSTPIPCFG_PTOKEN_IN_Val);
 		hw_pipe_set_token(rhport, pipe, HSTPIPCFG_PTOKEN_IN);
 		// hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_RXINI | USBHS_HSTPIPISR_SHORTPACKETI);
@@ -620,21 +618,22 @@ void hcd_int_handler(uint8_t rhport)
 					*dst++ = *src++;
 				}
 
+				USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_FIFOCONC;
+
 				pipes[pipe].rxed += rx;
 
-				if (pipes[pipe].rxed < pipes[pipe].to_rx)
+				if (pipes[pipe].rxed >= pipes[pipe].to_rx)
 				{
+					static int add = 0;
 					++ints_i;
-					ints[ints_i - 1] = 22;
-					USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_FIFOCONC;
+					add++;
+					ints[ints_i - 1] = (23 * 100) + add;
+					pipes[pipe].buf = NULL;
+					hcd_event_xfer_complete(address, endpoint, rx, XFER_RESULT_SUCCESS, true);
 				}
 				else
 				{
-					++ints_i;
-					ints[ints_i - 1] = 23;
-					pipes[pipe].buf = NULL;
-					USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_FIFOCONC;
-					hcd_event_xfer_complete(address, endpoint, rx, XFER_RESULT_SUCCESS, true);
+					USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_PFREEZEC;
 				}
 			}
 			else

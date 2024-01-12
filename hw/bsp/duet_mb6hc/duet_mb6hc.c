@@ -143,11 +143,11 @@ int board_uart_read(uint8_t* buf, int len)
 
 int board_uart_write(void const * buf, int len)
 {
-  // while until previous transfer is complete
-  while(uart_busy) {}
-  uart_busy = true;
+  // // while until previous transfer is complete
+  // while(uart_busy) {}
+  // uart_busy = true;
 
-  io_write(&edbg_com.io, buf, len);
+  // io_write(&edbg_com.io, buf, len);
   return len;
 }
 
