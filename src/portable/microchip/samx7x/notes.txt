@@ -77,7 +77,23 @@ USBD Xfer Complete on EP 80 with 0 b
 
 
 
-RP2040
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+USBD Bus Reset : Full Speed
 esp32s3> USBD Bus Reset : Full Speed
 
 USBD Setup Received 80 06 00 01 00 00 08 00 
@@ -163,6 +179,51 @@ USBD Xfer Complete on EP 81 with 13 bytes
   MSC xfer callback
   SCSI Status [Lun0] = 0
   Queue EP 01 with 31 bytes ...
+USBD Xfer Complete on EP 01 with 31 bytes
+  MSC xfer callback
+  SCSI Command [Lun0]: Read10
+  Queue EP 81 with 512 bytes ...
+I (760) main_task: Returned from app_main()
+USBD Xfer Complete on EP 81 with 512 bytes
+  MSC xfer callback
+  SCSI Data [Lun0]
+  Queue EP 81 with 13 bytes ...
+USBD Xfer Complete on EP 81 with 13 bytes
+  MSC xfer callback
+  SCSI Status [Lun0] = 0
+  Queue EP 01 with 31 bytes ...
+USBD Xfer Complete on EP 01 with 31 bytes
+  MSC xfer callback
+  SCSI Command [Lun0]: Read10
+  Queue EP 81 with 512 bytes ...
+USBD Xfer Complete on EP 81 with 512 bytes
+  MSC xfer callback
+  SCSI Data [Lun0]
+  Queue EP 81 with 13 bytes ...
+USBD Xfer Complete on EP 81 with 13 bytes
+  MSC xfer callback
+  SCSI Status [Lun0] = 0
+  Queue EP 01 with 31 bytes ...
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
