@@ -36,24 +36,19 @@
 
 static bool ready = false;
 
-static const uint16_t psize_2_size[] = {8, 16, 32, 64, 128, 256, 512, 1024};
-
 #define EP_GET_FIFO_PTR(ep, scale) (((TU_XSTRCAT(TU_STRCAT(uint, scale),_t) (*)[0x8000 / ((scale) / 8)])FIFO_RAM_ADDR)[(ep)])
 
 
 typedef struct 
 {
-	uint8_t len;
-	bool in;
-
-	uint16_t tx_len;
-
 	uint8_t *buf;
-	uint16_t to_rx;
+	uint16_t len;
 	uint16_t rxed;
 } xfer_ctl_t;
 
 static xfer_ctl_t pipes[EP_MAX];
+
+static const uint16_t psize_2_size[] = {8, 16, 32, 64, 128, 256, 512, 1024};
 
 void breakpoint(void)
 {
@@ -296,8 +291,6 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
 	// hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIMR_FIFOCON | USBHS_HSTPIPIMR_PFREEZE);
 	USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_FIFOCONC | HSTPIPIDR_PFREEZEC;
 
-	pipes[pipe].in = (setup_packet[0] & TUSB_DIR_IN_MASK);
-
 	++ints_i;
 	ints[ints_i - 1] = 100;
 
@@ -455,7 +448,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 		ints[ints_i - 1] = 200;
 
 		pipes[pipe].buf = buffer;
-		pipes[pipe].to_rx = buflen;
+		pipes[pipe].len = buflen;
 		pipes[pipe].rxed = 0;
 
 		// hri_usbhs_write_HSTPIPCFG_PTOKEN_bf(drv->hw, pi, USBHS_HSTPIPCFG_PTOKEN_IN_Val);
@@ -472,14 +465,13 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 		++ints_i;
 		ints[ints_i - 1] = 300;
 
-		pipes[pipe].tx_len = buflen;
+		pipes[pipe].len = buflen;
 
 		volatile uint8_t *dst = EP_GET_FIFO_PTR(pipe, 8);
 		volatile uint8_t *src = buffer;
 		for (size_t i = 0; i < buflen; i++)
 		{
-			volatile uint8_t val = *src++;
-			*dst++ = val;
+			*dst++ = *src++;
 		}
 		// hri_usbhs_write_HSTPIPCFG_PTOKEN_bf(drv->hw, pi, USBHS_HSTPIPCFG_PTOKEN_OUT_Val);
 		hw_pipe_set_token(rhport, pipe, HSTPIPCFG_PTOKEN_OUT);
@@ -552,7 +544,6 @@ void hcd_int_handler(uint8_t rhport)
 		while (!(USB_REG->SR & SR_CLKUSABLE));
 		USB_REG->HSTICR |= HSTICR_RSTIC;
 		USB_REG->HSTIDR |= HSTIDR_RSTIEC;
-
 		ready = true;
 	}
 
@@ -561,7 +552,7 @@ void hcd_int_handler(uint8_t rhport)
 		USB_REG->CTRL &= ~CTRL_FRZCLK;
 		while (!(USB_REG->SR & SR_CLKUSABLE));
 		uint8_t pipe = 23 - __CLZ(isr & USBHS_HSTISR_PEP__Msk);
-		volatile uint32_t pipisr = USB_REG->HSTPIPISR[pipe];
+		uint32_t pipisr = USB_REG->HSTPIPISR[pipe];
 
 		uint8_t address = hw_pipe_get_address(rhport, pipe);
 		uint8_t endpoint = hw_pipe_get_endpoint(rhport, pipe);
@@ -575,7 +566,6 @@ void hcd_int_handler(uint8_t rhport)
 			USB_REG->HSTPIPICR[pipe] = HSTPIPICR_CTRL_TXSTPIC;
 			// hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXSTPI);
 			USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_CTRL_TXSTPEC;
-
 			USB_REG->HSTPIPIER[pipe] =  HSTPIPIER_PFREEZES;
 			hcd_event_xfer_complete(address, endpoint, 8, XFER_RESULT_SUCCESS, true);
 			return;
@@ -619,7 +609,7 @@ void hcd_int_handler(uint8_t rhport)
 
 				pipes[pipe].rxed += rx;
 
-				if (pipes[pipe].rxed >= pipes[pipe].to_rx)
+				if (pipes[pipe].rxed >= pipes[pipe].len)
 				{
 					static int add = 0;
 					++ints_i;
@@ -660,15 +650,14 @@ void hcd_int_handler(uint8_t rhport)
 			// hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXOUTI);
 			USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_TXOUTEC;
 
-			hcd_event_xfer_complete(address, endpoint, pipes[pipe].tx_len, XFER_RESULT_SUCCESS, true);
-			pipes[pipe].tx_len = 0;
+			hcd_event_xfer_complete(address, endpoint, pipes[pipe].len, XFER_RESULT_SUCCESS, true);
+			pipes[pipe].buf = 0;
+			pipes[pipe].len = 0;
 			return;
 		}
 
 		++ints_i;
 		ints[ints_i - 1] = pipisr;
-
-		breakpoint();
 	}
 }
 
