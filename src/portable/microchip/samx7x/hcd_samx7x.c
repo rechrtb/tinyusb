@@ -258,6 +258,120 @@ void hcd_device_close(uint8_t rhport, uint8_t dev_addr)
 	}
 }
 
+static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
+{
+    // _usb_h_dma(pipe, false);
+    // uint8_t            pi   = _usb_h_pipe_i(pipe);
+    // uint8_t            dmai = pi - 1;
+    // struct usb_h_desc *drv  = (struct usb_h_desc *)pipe->hcd;
+    // uint16_t           mps  = psize_2_size[hri_usbhs_read_HSTPIPCFG_PSIZE_bf(drv->hw, pi)];
+    // hal_atomic_t       flags;
+    // uint8_t *          buf;
+    // uint32_t           size, count;
+    // uint32_t           n_next, n_max;
+    // uint32_t           dma_ctrl = 0;
+    // bool               dir      = pipe->ep & 0x80;
+
+    // if (pipe->x.general.state != USB_H_PIPE_S_DATO && pipe->x.general.state != USB_H_PIPE_S_DATI) {
+    //     return; /* No DMA is running */
+    // }
+
+
+    // _usb_h_load_x_param(pipe, &buf, &size, &count);
+
+
+    // if (count < size && !end) {
+    //     /* Need to send or receive other data */
+    //     n_next = size - count;
+    //     n_max  = USBHS_DMA_TRANS_MAX;
+    //     if (dir) {
+    //         /* 256 is the maximum of IN requests via UPINRQ */
+    //         if (256L * mps < n_max) {
+    //             n_max = 256L * mps;
+    //         }
+    //     }
+    //     if (n_max < n_next) {
+    //         /* HW maximum transfer size */
+    //         n_next = n_max;
+    //     }
+    //     /* Set 0 to transfer the maximum */
+    //     dma_ctrl = USBHS_HSTDMACONTROL_BUFF_LENGTH((n_next == USBHS_DMA_TRANS_MAX) ? 0 : n_next);
+    //     if (dir) {
+    //         /* Enable short packet reception */
+    //         dma_ctrl |= USBHS_HSTDMACONTROL_END_TR_IT | USBHS_HSTDMACONTROL_END_TR_EN;
+    //     } else if ((n_next & (mps - 1)) != 0) {
+    //         /* Enable short packet option
+    //         * else the DMA transfer is accepted
+    //         * and interrupt DMA valid but nothing is sent.
+    //         */
+    //         dma_ctrl |= USBHS_HSTDMACONTROL_END_B_EN;
+    //         /* No need to request another ZLP */
+    //         pipe->zlp = 0;
+    //     }
+    //     /* Start USB DMA to fill or read FIFO of the selected endpoint */
+    //     hri_usbhs_write_HSTDMAADDRESS_reg(drv->hw, dmai, (uint32_t)&buf[count]);
+    //     dma_ctrl |= USBHS_HSTDMACONTROL_END_BUFFIT | USBHS_HSTDMACONTROL_CHANN_ENB;
+    //     /* Disable IRQs to have a short sequence
+    //     * between read of EOT_STA and DMA enable
+    //     */
+    //     atomic_enter_critical(&flags);
+    //     if (!hri_usbhs_get_HSTDMASTATUS_reg(drv->hw, dmai, USBHS_HSTDMASTATUS_END_TR_ST)) {
+    //         if (dir) {
+    //             hri_usbhs_write_HSTPIPINRQ_reg(drv->hw, pi, (n_next + mps - 1) / mps - 1);
+    //         }
+    //         if (pipe->periodic_start) {
+    //             /* Still packets in FIFO, just start */
+    //             if (hri_usbhs_get_HSTPIPIMR_reg(drv->hw, pi, USBHS_HSTPIPIMR_NBUSYBKE)) {
+    //                 pipe->periodic_start = 0;
+    //                 hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIMR_NBUSYBKE);
+    //             } else {
+    //                 /* Wait SOF to start */
+    //                 _usb_h_add_sof_user(drv); /* SOF User: periodic start */
+    //             }
+    //         } else {
+    //             /* Just start */
+    //             hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIMR_NBUSYBKE | USBHS_HSTPIPIMR_PFREEZE);
+    //         }
+    //         /* Start DMA */
+    //         hri_usbhs_write_HSTDMACONTROL_reg(drv->hw, dmai, dma_ctrl);
+    //         count += n_next;
+    //         _usb_h_save_x_param(pipe, count);
+    //         atomic_leave_critical(&flags);
+    //         return;
+    //     }
+    //     atomic_leave_critical(&flags);
+    // }
+
+    // /* OUT pipe */
+    // if ((pipe->ep & 0x80) == 0) {
+    //     if (pipe->zlp) {
+    //         /* Need to send a ZLP (No possible with USB DMA)
+    //         * enable interrupt to wait a free bank to sent ZLP
+    //         */
+    //         hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXOUTI);
+    //         if (hri_usbhs_get_HSTPIPISR_reg(drv->hw, pi, USBHS_HSTPIPISR_RWALL)) {
+    //             /* Force interrupt in case of pipe already free */
+    //             hri_usbhs_write_HSTPIPIFR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXOUTI);
+    //         }
+    //         hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIMR_TXOUTE);
+    //     } else {
+    //         /* Wait that all banks are free to freeze clock of OUT endpoint
+    //         * and call callback except ISO. */
+    //         /* For ISO out, start another DMA transfer since no ACK needed */
+    //         hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIER_NBUSYBKES);
+    //         if (pipe->type != 1) {
+    //             /* Callback on BE transfer done */
+    //             return;
+    //         }
+    //     }
+    // }
+    // /* Finish transfer */
+    // _usb_h_end_transfer(pipe, USB_H_OK);
+    // return USB_H_OK;
+
+    return true;
+}
+
 bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet[8])
 {
 	uint8_t pipe = 0;
@@ -432,6 +546,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 	return false;
 }
 
+
 bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *buffer, uint16_t buflen)
 {
 	uint8_t pipe = 0;
@@ -450,40 +565,53 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 	pipes[pipe].buflen = buflen;
 	pipes[pipe].proclen = 0;
 
-	if (ep_addr & TUSB_DIR_IN_MASK)
+	if (pipes[pipe].dma)
 	{
-		++ints_i;
-		ints[ints_i - 1] = 200;
+		// pipe->periodic_start = (!dir) && (iso_pipe || int_pipe);
 
+		// /* Start DMA */
+		// hri_usbhs_set_HSTPIPCFG_AUTOSW_bit(pipe->hcd->hw, pi);
+        USB_REG->HSTPIPCFG[pipe] |= HSTPIPCFG_AUTOSW;
 
-		// hri_usbhs_write_HSTPIPCFG_PTOKEN_bf(drv->hw, pi, USBHS_HSTPIPCFG_PTOKEN_IN_Val);
-		hw_pipe_set_token(rhport, pipe, HSTPIPCFG_PTOKEN_IN);
-		// hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_RXINI | USBHS_HSTPIPISR_SHORTPACKETI);
-		USB_REG->HSTPIPICR[pipe] = HSTPIPICR_RXINIC | HSTPIPICR_SHORTPACKETIC;
-		// hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIER_RXINES);
-		USB_REG->HSTPIPIER[pipe] = HSTPIPIER_RXINES;
-		// hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIMR_FIFOCON | USBHS_HSTPIPIMR_PFREEZE);
-		USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_PFREEZEC;
+        //_usb_h_dma(pipe, false);
+        hw_pipe_setup_dma(rhport, pipe, false);
 	}
 	else
 	{
-		++ints_i;
-		ints[ints_i - 1] = 300;
-
-		volatile uint8_t *dst = EP_GET_FIFO_PTR(pipe, 8);
-		volatile uint8_t *src = buffer;
-		for (size_t i = 0; i < buflen; i++)
+		if (ep_addr & TUSB_DIR_IN_MASK)
 		{
-			*dst++ = *src++;
+			++ints_i;
+			ints[ints_i - 1] = 200;
+
+			// hri_usbhs_write_HSTPIPCFG_PTOKEN_bf(drv->hw, pi, USBHS_HSTPIPCFG_PTOKEN_IN_Val);
+			hw_pipe_set_token(rhport, pipe, HSTPIPCFG_PTOKEN_IN);
+			// hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_RXINI | USBHS_HSTPIPISR_SHORTPACKETI);
+			USB_REG->HSTPIPICR[pipe] = HSTPIPICR_RXINIC | HSTPIPICR_SHORTPACKETIC;
+			// hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIER_RXINES);
+			USB_REG->HSTPIPIER[pipe] = HSTPIPIER_RXINES;
+			// hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIMR_FIFOCON | USBHS_HSTPIPIMR_PFREEZE);
+			USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_PFREEZEC;
 		}
-		// hri_usbhs_write_HSTPIPCFG_PTOKEN_bf(drv->hw, pi, USBHS_HSTPIPCFG_PTOKEN_OUT_Val);
-		hw_pipe_set_token(rhport, pipe, HSTPIPCFG_PTOKEN_OUT);
-		// hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXOUTI);
-		USB_REG->HSTPIPICR[pipe] = HSTPIPISR_TXOUTI;
-		// hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIMR_TXOUTE);
-		USB_REG->HSTPIPIER[pipe] = HSTPIPIER_TXOUTES;
-		// hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIMR_FIFOCON | USBHS_HSTPIPIMR_PFREEZE);
-		USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_FIFOCONC | HSTPIPIDR_PFREEZEC;
+		else
+		{
+			++ints_i;
+			ints[ints_i - 1] = 300;
+
+			volatile uint8_t *dst = EP_GET_FIFO_PTR(pipe, 8);
+			volatile uint8_t *src = buffer;
+			for (size_t i = 0; i < buflen; i++)
+			{
+				*dst++ = *src++;
+			}
+			// hri_usbhs_write_HSTPIPCFG_PTOKEN_bf(drv->hw, pi, USBHS_HSTPIPCFG_PTOKEN_OUT_Val);
+			hw_pipe_set_token(rhport, pipe, HSTPIPCFG_PTOKEN_OUT);
+			// hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXOUTI);
+			USB_REG->HSTPIPICR[pipe] = HSTPIPISR_TXOUTI;
+			// hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIMR_TXOUTE);
+			USB_REG->HSTPIPIER[pipe] = HSTPIPIER_TXOUTES;
+			// hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIMR_FIFOCON | USBHS_HSTPIPIMR_PFREEZE);
+			USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_FIFOCONC | HSTPIPIDR_PFREEZEC;
+		}
 	}
 
 	return true;
@@ -664,7 +792,80 @@ void hcd_int_handler(uint8_t rhport)
 	/* DMA interrupts */
 	if (isr & HSTISR_DMA_)
 	{
-		breakpoint();
+    //     int8_t              pi  = 7 - __CLZ(isr & imr & USBHS_HSTISR_DMA__Msk);
+		uint8_t pipe = 23 - __CLZ(isr & USBHS_HSTISR_PEP__Msk);
+
+		uint8_t address = hw_pipe_get_address(rhport, pipe);
+		uint8_t endpoint = hw_pipe_get_endpoint(rhport, pipe);
+    //     struct _usb_h_prvt *pd = (struct _usb_h_prvt *)drv->prvt;
+    //     struct usb_h_pipe * p;
+    //     uint32_t            imr = hri_usbhs_read_HSTIMR_reg(drv->hw);
+
+    //     uint32_t dmastat;
+    //     uint8_t *buf;
+    //     uint32_t size, count;
+    //     uint32_t n_remain;
+    //     if (pi < 0) {
+    //         return;
+    //     }
+
+    //     dmastat = hri_usbhs_read_HSTDMASTATUS_reg(drv->hw, pi - 1);
+        uint32_t stat = USB_REG->HSTDMA[pipe - 1].HSTDMASTATUS;
+    //     if (dmastat & USBHS_HSTDMASTATUS_CHANN_ENB) {
+    //         return; /* Ignore EOT_STA interrupt */
+    //     }
+        if (stat & HSTDMASTATUS_END_BF_ST)
+        {
+            return;
+        }
+    //     p = &pd->pipe_pool[pi];
+    // #if _HPL_USB_H_HBW_SP
+    //     if (p->high_bw_out) {
+    //         /* Streaming out, no ACK, assume everything sent */
+    //         _usb_h_ll_dma_out(p, _usb_h_ll_get(pi, p->bank));
+    //         return;
+    //     }
+    // #endif
+
+    //     /* Save number of data no transfered */
+    //     n_remain = (dmastat & USBHS_HSTDMASTATUS_BUFF_COUNT_Msk) >> USBHS_HSTDMASTATUS_BUFF_COUNT_Pos;
+        uint16_t remaining = (stat & HSTDMASTATUS_BUFF_COUNT) >> HSTDMASTATUS_BUFF_COUNT_Pos;
+        if (remaining)
+        {
+
+        }
+
+    //     if (n_remain) {
+    //         _usb_h_load_x_param(p, &buf, &size, &count);
+    //         (void)buf;
+    //         (void)size;
+    //         /* Transfer no complete (short packet or ZLP) then:
+    //         * Update number of transfered data
+    //         */
+    //         count -= n_remain;
+    //         _usb_h_save_x_param(p, count);
+    //     }
+    //     /* Pipe IN: freeze status may delayed */
+    //     if (p->ep & 0x80) {
+    //         if (!hri_usbhs_get_HSTPIPIMR_reg(drv->hw, pi, USBHS_HSTPIPIMR_PFREEZE)) {
+    //             /* Pipe is not frozen in case of :
+    //             * - incomplete transfer when the request number INRQ is not
+    //             *   complete.
+    //             * - low USB speed and with a high CPU frequency,
+    //             *   a ACK from host can be always running on USB line.
+    //             */
+    //             if (n_remain) {
+    //                 /* Freeze pipe in case of incomplete transfer */
+    //                 hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIMR_PFREEZE);
+    //             } else {
+    //                 /* Wait freeze in case of ACK on going */
+    //                 while (!hri_usbhs_get_HSTPIPIMR_reg(drv->hw, pi, USBHS_HSTPIPIMR_PFREEZE)) {
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     _usb_h_dma(p, (bool)n_remain);
+        hw_pipe_setup_dma(rhport, pipe, remaining);
 		return;
 	}
 }
