@@ -44,9 +44,10 @@ typedef struct
 	uint8_t *buf;
 	uint16_t buflen;
 	uint16_t proclen;
-} xfer_ctl_t;
+	bool dma;
+} hw_pipe_t;
 
-static xfer_ctl_t pipes[EP_MAX];
+static hw_pipe_t pipes[EP_MAX];
 
 static const uint16_t psize_2_size[] = {8, 16, 32, 64, 128, 256, 512, 1024};
 
@@ -396,7 +397,8 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 	cfg |= (HSTPIPCFG_PEPNUM & ((uint32_t)(ep_desc->bEndpointAddress & 0xF) << HSTPIPCFG_PEPNUM_Pos));
 
 	uint16_t size = ep_desc->wMaxPacketSize & 0x3FF;
-	cfg |= (HSTPIPCFG_PSIZE & ((uint32_t)compute_psize(size) << HSTPIPCFG_PSIZE_Pos));
+	uint16_t actual_size = compute_psize(size);
+	cfg |= (HSTPIPCFG_PSIZE & ((uint32_t)actual_size << HSTPIPCFG_PSIZE_Pos));
 
 	uint8_t bank = ((size >> 11) & 0x3) + 1;
 	cfg |= (HSTPIPCFG_PBK & ((uint32_t)(bank - 1) << HSTPIPCFG_PBK_Pos));
@@ -420,6 +422,8 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 		USB_REG->HSTPIPICR[pipe] = HSTPIPICR_CTRL_RXSTALLDIC | HSTPIPICR_OVERFIC | HSTPIPISR_PERRI | HSTPIPICR_INTRPT_UNDERFIC;
 		USB_REG->HSTPIPIER[pipe] = HSTPIPIER_CTRL_RXSTALLDES | HSTPIPIER_OVERFIES | HSTPIPIER_PERRES;
 		USB_REG->HSTIER |= (HSTISR_PEP_0 | (HSTISR_DMA_0 >> 1)) << pipe;
+
+		pipes[pipe].dma = EP_DMA_SUPPORT(pipe) && type != TUSB_XFER_CONTROL && actual_size == size;
 
 		return true;
 	}
@@ -655,6 +659,13 @@ void hcd_int_handler(uint8_t rhport)
 
 		++ints_i;
 		ints[ints_i - 1] = pipisr;
+	}
+
+	/* DMA interrupts */
+	if (isr & HSTISR_DMA_)
+	{
+		breakpoint();
+		return;
 	}
 }
 
