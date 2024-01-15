@@ -46,11 +46,7 @@ typedef struct
 	uint8_t len;
 	bool in;
 
-	uint8_t address;
-	uint8_t endpoint;
-
 	uint16_t tx_len;
-
 
 	uint8_t *buf;
 	uint16_t to_rx;
@@ -68,21 +64,25 @@ void breakpoint(void)
 static uint32_t ints[100] = { 0 };
 static uint32_t ints_i= 0;
 
-static uint8_t hw_pipe_get_endpoint(uint8_t rhport, uint8_t pipe)
+static inline uint8_t hw_pipe_get_endpoint(uint8_t rhport, uint8_t pipe)
 {
-	// (void) rhport;
-	// return USB_REG->HSTPIPCFG[pipe] & HSTPIPCFG_PEPNUM;
-	return pipes[pipe].endpoint;
+	(void) rhport;
+	uint8_t ep_num = ((USB_REG->HSTPIPCFG[pipe] & HSTPIPCFG_PEPNUM) >> HSTPIPCFG_PEPNUM_Pos);
+	if (ep_num)
+	{
+		bool in = ((USB_REG->HSTPIPCFG[pipe] & HSTPIPCFG_PTOKEN) >> HSTPIPCFG_PTOKEN_Pos) == HSTPIPCFG_PTOKEN_IN_Val;
+		return ep_num | (in ? TUSB_DIR_IN_MASK : 0);
+	}
+	return ep_num;
 }
 
-static uint8_t hw_pipe_get_address(uint8_t rhport, uint8_t pipe)
+static inline uint8_t hw_pipe_get_address(uint8_t rhport, uint8_t pipe)
 {
-	// (void) rhport;
-	// uint8_t index = pipe >> 2;
-	// uint8_t pos = (pipe & 0x3) << 3;
-	// uint32_t reg = (&USB_REG->HSTADDR1)[index];
-	// return (reg & (0x7f << pos)) >> pos;
-	return pipes[pipe].address;
+	(void) rhport;
+	uint8_t index = pipe >> 2;
+	uint8_t pos = (pipe & 0x3) << 3;
+	uint32_t reg = (&USB_REG->HSTADDR1)[index];
+	return ((reg & (0x7f << pos)) >> pos);
 }
 
 static inline void hw_pipe_set_token(uint8_t rhport, uint8_t pipe, uint32_t token)
@@ -427,9 +427,6 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 		USB_REG->HSTPIPICR[pipe] = HSTPIPICR_CTRL_RXSTALLDIC | HSTPIPICR_OVERFIC | HSTPIPISR_PERRI | HSTPIPICR_INTRPT_UNDERFIC;
 		USB_REG->HSTPIPIER[pipe] = HSTPIPIER_CTRL_RXSTALLDES | HSTPIPIER_OVERFIES | HSTPIPIER_PERRES;
 		USB_REG->HSTIER |= (HSTISR_PEP_0 | (HSTISR_DMA_0 >> 1)) << pipe;
-
-		pipes[pipe].address = dev_addr;
-		pipes[pipe].endpoint = ep_desc->bEndpointAddress;
 
 		return true;
 	}
