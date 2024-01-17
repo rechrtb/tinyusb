@@ -47,6 +47,19 @@ typedef struct
 	bool dma;
 } hw_pipe_t;
 
+static inline void hw_enter_critical(volatile uint32_t *atomic)
+{
+	*atomic = __get_PRIMASK();
+	__disable_irq();
+	__DMB();
+}
+
+static inline void hw_exit_critical(volatile uint32_t *atomic)
+{
+	__DMB();
+	__set_PRIMASK(*atomic);
+}
+
 static hw_pipe_t pipes[EP_MAX];
 
 static const uint16_t psize_2_size[] = {8, 16, 32, 64, 128, 256, 512, 1024};
@@ -260,6 +273,7 @@ void hcd_device_close(uint8_t rhport, uint8_t dev_addr)
 
 static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
 {
+	uint32_t flags = 0;
     // _usb_h_dma(pipe, false);
     // uint8_t            pi   = _usb_h_pipe_i(pipe);
     // uint8_t            dmai = pi - 1;
@@ -279,6 +293,56 @@ static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
 
     // _usb_h_load_x_param(pipe, &buf, &size, &count);
 
+    uint8_t endpoint = hw_pipe_get_endpoint(rhport, pipe);
+    uint16_t max_size  = psize_2_size[(USB_REG->HSTPIPCFG[pipe] & HSTPIPCFG_PSIZE) >> HSTPIPCFG_PSIZE_Pos];
+
+	uint32_t nextlen = pipes[pipe].buflen - pipes[pipe].proclen;
+	uint32_t maxlen = 0x10000;
+
+	if (endpoint & TUSB_DIR_IN_MASK)
+	{
+		if (256 * max_size < maxlen)
+		{
+			maxlen = 256 * max_size;
+		}
+	}
+
+	if (maxlen < nextlen)
+	{
+		nextlen = maxlen;
+	}
+
+    uint32_t dma_ctrl = USBHS_HSTDMACONTROL_BUFF_LENGTH((nextlen == 0x10000) ? 0 : nextlen);
+
+    if (endpoint & TUSB_DIR_IN_MASK)
+    {
+        dma_ctrl |= HSTDMACONTROL_END_TR_IT | HSTDMACONTROL_END_TR_EN;
+    }
+    else
+    {
+        if ((pipes[pipe].buflen & (max_size - 1)) != 0)
+        {
+            dma_ctrl |= HSTDMACONTROL_END_B_EN;
+        }
+    }
+
+    USB_REG->HSTDMA[pipe - 1].HSTDMAADDRESS = (uint32_t)&pipes[pipe].buf[pipes[pipe].proclen];
+    dma_ctrl |= HSTDMACONTROL_END_BUFFIT | HSTDMACONTROL_CHANN_ENB;
+
+	hw_enter_critical(&flags);
+	if (!(USB_REG->HSTDMA[pipe - 1].HSTDMASTATUS & HSTDMASTATUS_END_TR_ST))
+	{
+		if (endpoint & TUSB_DIR_IN_MASK)
+		{
+			USB_REG->HSTPIPINRQ[pipe] = (nextlen + max_size - 1) / max_size - 1;
+		}
+		USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_NBUSYBKEC | HSTPIPIDR_PFREEZEC;
+		hw_exit_critical(&flags);
+		USB_REG->HSTDMA[pipe - 1].HSTDMACONTROL = dma_ctrl;
+		pipes[pipe].proclen += nextlen;
+		return true;
+	}
+	hw_exit_critical(&flags);
 
     // if (count < size && !end) {
     //     /* Need to send or receive other data */
@@ -315,7 +379,7 @@ static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
     //     * between read of EOT_STA and DMA enable
     //     */
     //     atomic_enter_critical(&flags);
-    //     if (!hri_usbhs_get_HSTDMASTATUS_reg(drv->hw, dmai, USBHS_HSTDMASTATUS_END_TR_ST)) {
+    //     if (!hri_usbhs_get_hstdmastatus_reg(drv->hw, dmai, usbhs_hstdmastatus_end_tr_st)) {
     //         if (dir) {
     //             hri_usbhs_write_HSTPIPINRQ_reg(drv->hw, pi, (n_next + mps - 1) / mps - 1);
     //         }
@@ -369,7 +433,7 @@ static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
     // _usb_h_end_transfer(pipe, USB_H_OK);
     // return USB_H_OK;
 
-    return true;
+    return false;
 }
 
 bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet[8])
@@ -511,8 +575,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 	cfg |= (HSTPIPCFG_PEPNUM & ((uint32_t)(ep_desc->bEndpointAddress & 0xF) << HSTPIPCFG_PEPNUM_Pos));
 
 	uint16_t size = ep_desc->wMaxPacketSize & 0x3FF;
-	uint16_t actual_size = compute_psize(size);
-	cfg |= (HSTPIPCFG_PSIZE & ((uint32_t)actual_size << HSTPIPCFG_PSIZE_Pos));
+	cfg |= (HSTPIPCFG_PSIZE & ((uint32_t)compute_psize(size) << HSTPIPCFG_PSIZE_Pos));
 
 	uint8_t bank = ((size >> 11) & 0x3) + 1;
 	cfg |= (HSTPIPCFG_PBK & ((uint32_t)(bank - 1) << HSTPIPCFG_PBK_Pos));
@@ -537,7 +600,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 		USB_REG->HSTPIPIER[pipe] = HSTPIPIER_CTRL_RXSTALLDES | HSTPIPIER_OVERFIES | HSTPIPIER_PERRES;
 		USB_REG->HSTIER |= (HSTISR_PEP_0 | (HSTISR_DMA_0 >> 1)) << pipe;
 
-		pipes[pipe].dma = EP_DMA_SUPPORT(pipe) && type != TUSB_XFER_CONTROL && actual_size == size;
+		pipes[pipe].dma = EP_DMA_SUPPORT(pipe) && type != TUSB_XFER_CONTROL;
 
 		return true;
 	}
@@ -845,6 +908,7 @@ void hcd_int_handler(uint8_t rhport)
     //         count -= n_remain;
     //         _usb_h_save_x_param(p, count);
     //     }
+
     //     /* Pipe IN: freeze status may delayed */
     //     if (p->ep & 0x80) {
     //         if (!hri_usbhs_get_HSTPIPIMR_reg(drv->hw, pi, USBHS_HSTPIPIMR_PFREEZE)) {
