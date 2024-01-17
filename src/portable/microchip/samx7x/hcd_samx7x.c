@@ -809,7 +809,7 @@ void hcd_int_handler(uint8_t rhport)
 					++ints_i;
 					add++;
 					ints[ints_i - 1] = (23 * 100) + add;
-					hcd_event_xfer_complete(address, endpoint, rx, XFER_RESULT_SUCCESS, true);
+					hcd_event_xfer_complete(address, endpoint, pipes[pipe].proclen, XFER_RESULT_SUCCESS, true);
 				}
 				else
 				{
