@@ -70,8 +70,8 @@ void breakpoint(void)
 	a++;
 }
 
-static uint32_t ints[100] = { 0 };
-static uint32_t ints_i= 0;
+static volatile uint32_t ints[100] = { 0 };
+static volatile uint32_t ints_i= 0;
 
 static inline uint8_t hw_pipe_get_endpoint(uint8_t rhport, uint8_t pipe)
 {
@@ -337,9 +337,11 @@ static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
 			USB_REG->HSTPIPINRQ[pipe] = (nextlen + max_size - 1) / max_size - 1;
 		}
 		USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_NBUSYBKEC | HSTPIPIDR_PFREEZEC;
-		hw_exit_critical(&flags);
-		USB_REG->HSTDMA[pipe - 1].HSTDMACONTROL = dma_ctrl;
+		++ints_i;
+		ints[ints_i - 1] = 10000;
 		pipes[pipe].proclen += nextlen;
+		USB_REG->HSTDMA[pipe - 1].HSTDMACONTROL = dma_ctrl;
+		hw_exit_critical(&flags);
 		return true;
 	}
 	hw_exit_critical(&flags);
@@ -432,6 +434,8 @@ static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
     // /* Finish transfer */
     // _usb_h_end_transfer(pipe, USB_H_OK);
     // return USB_H_OK;
+	++ints_i;
+	ints[ints_i - 1] = 10001;
 
     return false;
 }
@@ -855,8 +859,11 @@ void hcd_int_handler(uint8_t rhport)
 	/* DMA interrupts */
 	if (isr & HSTISR_DMA_)
 	{
+		++ints_i;
+		ints[ints_i - 1] = 1000;
+
     //     int8_t              pi  = 7 - __CLZ(isr & imr & USBHS_HSTISR_DMA__Msk);
-		uint8_t pipe = 23 - __CLZ(isr & USBHS_HSTISR_PEP__Msk);
+		uint8_t pipe = 7 - __CLZ(isr & USBHS_HSTISR_DMA__Msk);
 
 		uint8_t address = hw_pipe_get_address(rhport, pipe);
 		uint8_t endpoint = hw_pipe_get_endpoint(rhport, pipe);
@@ -893,10 +900,16 @@ void hcd_int_handler(uint8_t rhport)
     //     /* Save number of data no transfered */
     //     n_remain = (dmastat & USBHS_HSTDMASTATUS_BUFF_COUNT_Msk) >> USBHS_HSTDMASTATUS_BUFF_COUNT_Pos;
         uint16_t remaining = (stat & HSTDMASTATUS_BUFF_COUNT) >> HSTDMASTATUS_BUFF_COUNT_Pos;
-        if (remaining)
-        {
+		pipes[pipe].proclen -= remaining;
 
-        }
+		if (pipes[pipe].proclen >= pipes[pipe].buflen)
+		{
+			hcd_event_xfer_complete(address, endpoint, pipes[pipe].proclen, XFER_RESULT_SUCCESS, true);
+		}
+		// else
+		// {
+		// 	hw_pipe_setup_dma(rhport, pipe, remaining);
+		// }
 
     //     if (n_remain) {
     //         _usb_h_load_x_param(p, &buf, &size, &count);
@@ -929,7 +942,7 @@ void hcd_int_handler(uint8_t rhport)
     //         }
     //     }
     //     _usb_h_dma(p, (bool)n_remain);
-        hw_pipe_setup_dma(rhport, pipe, remaining);
+
 		return;
 	}
 }
