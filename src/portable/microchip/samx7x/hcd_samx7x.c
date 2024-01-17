@@ -70,7 +70,7 @@ void breakpoint(void)
 	a++;
 }
 
-static volatile uint32_t ints[100] = { 0 };
+static volatile uint32_t ints[1000] = { 0 };
 static volatile uint32_t ints_i= 0;
 
 static inline uint8_t hw_pipe_get_endpoint(uint8_t rhport, uint8_t pipe)
@@ -326,21 +326,27 @@ static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
         }
     }
 
+	ints[++ints_i - 1] = 10000;
+
     USB_REG->HSTDMA[pipe - 1].HSTDMAADDRESS = (uint32_t)&pipes[pipe].buf[pipes[pipe].proclen];
     dma_ctrl |= HSTDMACONTROL_END_BUFFIT | HSTDMACONTROL_CHANN_ENB;
 
 	hw_enter_critical(&flags);
+	ints[++ints_i - 1] = 10001;
 	if (!(USB_REG->HSTDMA[pipe - 1].HSTDMASTATUS & HSTDMASTATUS_END_TR_ST))
 	{
 		if (endpoint & TUSB_DIR_IN_MASK)
 		{
+			ints[++ints_i - 1] = 10002;
 			USB_REG->HSTPIPINRQ[pipe] = (nextlen + max_size - 1) / max_size - 1;
+			ints[++ints_i - 1] = 10003;
 		}
+		ints[++ints_i - 1] = 10004;
 		USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_NBUSYBKEC | HSTPIPIDR_PFREEZEC;
-		++ints_i;
-		ints[ints_i - 1] = 10000;
+		ints[++ints_i - 1] = 10005;
 		pipes[pipe].proclen += nextlen;
 		USB_REG->HSTDMA[pipe - 1].HSTDMACONTROL = dma_ctrl;
+		ints[++ints_i - 1] = 10006;
 		hw_exit_critical(&flags);
 		return true;
 	}
@@ -435,7 +441,7 @@ static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
     // _usb_h_end_transfer(pipe, USB_H_OK);
     // return USB_H_OK;
 	++ints_i;
-	ints[ints_i - 1] = 10001;
+	ints[++ints_i - 1] = 10010;
 
     return false;
 }
@@ -474,8 +480,7 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
 	// hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIMR_FIFOCON | USBHS_HSTPIPIMR_PFREEZE);
 	USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_FIFOCONC | HSTPIPIDR_PFREEZEC;
 
-	++ints_i;
-	ints[ints_i - 1] = 100;
+	ints[++ints_i - 1] = 100;
 
 	return true;
 }
@@ -647,8 +652,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 	{
 		if (ep_addr & TUSB_DIR_IN_MASK)
 		{
-			++ints_i;
-			ints[ints_i - 1] = 200;
+			ints[++ints_i - 1] = 200;
 
 			// hri_usbhs_write_HSTPIPCFG_PTOKEN_bf(drv->hw, pi, USBHS_HSTPIPCFG_PTOKEN_IN_Val);
 			hw_pipe_set_token(rhport, pipe, HSTPIPCFG_PTOKEN_IN);
@@ -661,8 +665,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 		}
 		else
 		{
-			++ints_i;
-			ints[ints_i - 1] = 300;
+			ints[++ints_i - 1] = 300;
 
 			volatile uint8_t *dst = EP_GET_FIFO_PTR(pipe, 8);
 			volatile uint8_t *src = buffer;
@@ -757,8 +760,7 @@ void hcd_int_handler(uint8_t rhport)
 
 		if (pipisr & HSTPIPISR_CTRL_TXSTPI)
 		{
-			++ints_i;
-			ints[ints_i - 1] = 10;
+			ints[++ints_i - 1] = 10;
 
 			// hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXSTPI);
 			USB_REG->HSTPIPICR[pipe] = HSTPIPICR_CTRL_TXSTPIC;
@@ -791,8 +793,7 @@ void hcd_int_handler(uint8_t rhport)
 			// _usb_h_in(p);
 			if (pipes[pipe].buflen)
 			{
-				++ints_i;
-				ints[ints_i - 1] = 21;
+				ints[++ints_i - 1] = 21;
 				// /* Read byte count */
 				// n_rx = hri_usbhs_read_HSTPIPISR_PBYCT_bf(drv->hw, pi);
 				uint16_t rx = (USB_REG->HSTPIPISR[pipe] & USBHS_HSTPIPISR_PBYCT_Msk) >> USBHS_HSTPIPISR_PBYCT_Pos;
@@ -810,9 +811,8 @@ void hcd_int_handler(uint8_t rhport)
 				if (pipes[pipe].proclen >= pipes[pipe].buflen)
 				{
 					static int add = 0;
-					++ints_i;
 					add++;
-					ints[ints_i - 1] = (23 * 100) + add;
+					ints[++ints_i - 1] = (23 * 100) + add;
 					hcd_event_xfer_complete(address, endpoint, pipes[pipe].proclen, XFER_RESULT_SUCCESS, true);
 				}
 				else
@@ -823,8 +823,7 @@ void hcd_int_handler(uint8_t rhport)
 			else
 			{
 				// Zero-length packet
-				++ints_i;
-				ints[ints_i - 1] = 25;
+				ints[++ints_i - 1] = 25;
 				// // 	hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIER_PFREEZES);
 				// USB_REG->HSTPIPIER[pipe] = HSTPIPIER_PFREEZES;
 				// // 	hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIDR_SHORTPACKETIEC | USBHS_HSTPIPIDR_RXINEC);
@@ -839,8 +838,7 @@ void hcd_int_handler(uint8_t rhport)
 
 		if (pipisr & HSTPIPISR_TXOUTI)
 		{
-			++ints_i;
-			ints[ints_i - 1] = 30;
+			ints[++ints_i - 1] = 30;
 			// hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIER_PFREEZES);
 			USB_REG->HSTPIPIER[pipe] =  HSTPIPIER_PFREEZES;
 			// hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXOUTI);
@@ -852,15 +850,13 @@ void hcd_int_handler(uint8_t rhport)
 			return;
 		}
 
-		++ints_i;
-		ints[ints_i - 1] = pipisr;
+		ints[++ints_i - 1] = pipisr;
 	}
 
 	/* DMA interrupts */
 	if (isr & HSTISR_DMA_)
 	{
-		++ints_i;
-		ints[ints_i - 1] = 1000;
+		ints[++ints_i - 1] = 1000;
 
     //     int8_t              pi  = 7 - __CLZ(isr & imr & USBHS_HSTISR_DMA__Msk);
 		uint8_t pipe = 7 - __CLZ(isr & USBHS_HSTISR_DMA__Msk);
@@ -884,10 +880,12 @@ void hcd_int_handler(uint8_t rhport)
     //     if (dmastat & USBHS_HSTDMASTATUS_CHANN_ENB) {
     //         return; /* Ignore EOT_STA interrupt */
     //     }
-        if (stat & HSTDMASTATUS_END_BF_ST)
+        if (stat & HSTDMASTATUS_CHANN_ENB)
         {
-            return;
+			ints[++ints_i - 1] = 1001;
+            // return;
         }
+
     //     p = &pd->pipe_pool[pi];
     // #if _HPL_USB_H_HBW_SP
     //     if (p->high_bw_out) {
@@ -904,6 +902,7 @@ void hcd_int_handler(uint8_t rhport)
 
 		if (pipes[pipe].proclen >= pipes[pipe].buflen)
 		{
+			ints[++ints_i - 1] = 1010;
 			hcd_event_xfer_complete(address, endpoint, pipes[pipe].proclen, XFER_RESULT_SUCCESS, true);
 		}
 		// else
