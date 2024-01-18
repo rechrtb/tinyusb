@@ -694,8 +694,7 @@ void hcd_int_handler(uint8_t rhport)
 
 	/* Low speed, switch to low power mode to use 48MHz clock */
 	// TODO: check handling transition from low speed -> high speed
-	volatile tusb_speed_t speed = hcd_port_speed_get(rhport);
-	if (speed == TUSB_SPEED_FULL || speed == TUSB_SPEED_LOW)
+	if (hcd_port_speed_get(rhport) == TUSB_SPEED_LOW)
 	{
 		if (!(USB_REG->HSTCTRL & USBHS_HSTCTRL_SPDCONF_Msk))
 		{
