@@ -148,6 +148,23 @@ static void hw_pipes_reset(uint8_t rhport)
 	}
 }
 
+static void hw_pipe_abort(uint8_t rhport, uint8_t pipe)
+{
+	// hri_usbhs_set_HSTPIP_reg(drv->hw, USBHS_HSTPIP_PRST0 << pi);
+	// hri_usbhs_clear_HSTPIP_reg(drv->hw, USBHS_HSTPIP_PRST0 << pi);
+
+	USB_REG->HSTPIP |= HSTPIP_PRST0 << pipe;
+	USB_REG->HSTPIP &= ~(HSTPIP_PRST0 << pipe);
+
+	// /* Disable interrupts */
+	// hri_usbhs_write_HSTPIPIDR_reg(drv->hw,
+	// 							pi,
+	// 							USBHS_HSTPIPIMR_RXINE | USBHS_HSTPIPIMR_TXOUTE | USBHS_HSTPIPIMR_TXSTPE
+	// 								| USBHS_HSTPIPIMR_RXSTALLDE | USBHS_HSTPIPIMR_SHORTPACKETIE);
+
+	USB_REG->HSTPIPIDR[pipe] = HSTPIPIMR_RXINE | HSTPIPIMR_TXOUTE | HSTPIPIMR_CTRL_TXSTPE | HSTPIPIMR_BLK_RXSTALLDE | HSTPIPIMR_SHORTPACKETIE;
+}
+
 static uint16_t compute_psize(uint16_t size)
 {
 	uint8_t i;
@@ -756,6 +773,25 @@ void hcd_int_handler(uint8_t rhport)
 
 		uint8_t address = hw_pipe_get_address(rhport, pipe);
 		uint8_t endpoint = hw_pipe_get_endpoint(rhport, pipe);
+
+		if (pipisr & HSTPIPISR_CTRL_RXSTALLDI)
+		{
+			ints[++ints_i - 1] = 88;
+			USB_REG->HSTPIPICR[pipe] = HSTPIPICR_CTRL_RXSTALLDIC;
+			USB_REG->HSTPIPIER[pipe] = HSTPIPIER_RSTDTS;
+			hw_pipe_abort(rhport, pipe);
+			hcd_event_xfer_complete(address, endpoint, 0, XFER_RESULT_STALLED, true);
+			return;
+		}
+
+		if (pipisr & HSTPIPISR_PERRI)
+		{
+			ints[++ints_i - 1] = 89;
+			xfer_result_t res = (USB_REG->HSTPIPERR[pipe] & HSTPIPERR_TIMEOUT) ? XFER_RESULT_TIMEOUT : XFER_RESULT_FAILED;
+			hw_pipe_abort(rhport, pipe);
+			hcd_event_xfer_complete(address, endpoint, 0, res, true);
+			return;
+		}
 
 		if (pipisr & HSTPIPISR_CTRL_TXSTPI)
 		{
