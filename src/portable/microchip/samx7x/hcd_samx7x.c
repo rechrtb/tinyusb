@@ -47,6 +47,8 @@ typedef struct
 	bool dma;
 } hw_pipe_t;
 
+
+
 static inline void hw_enter_critical(volatile uint32_t *atomic)
 {
 	*atomic = __get_PRIMASK();
@@ -58,6 +60,20 @@ static inline void hw_exit_critical(volatile uint32_t *atomic)
 {
 	__DMB();
 	__set_PRIMASK(*atomic);
+}
+
+
+TU_ATTR_ALWAYS_INLINE static inline void CleanInValidateCache(uint32_t *addr, int32_t size)
+{
+  if (SCB->CCR & SCB_CCR_DC_Msk)
+  {
+    SCB_CleanInvalidateDCache_by_Addr(addr, size);
+  }
+  else
+  {
+    __DSB();
+    __ISB();
+  }
 }
 
 static hw_pipe_t pipes[EP_MAX];
@@ -286,6 +302,22 @@ void hcd_device_close(uint8_t rhport, uint8_t dev_addr)
 			USB_REG->HSTPIP &= ~(((1 << i) << HSTPIP_PEN_Pos) & HSTPIP_PEN); // disable pipe
 		}
 	}
+}
+
+static void hcd_dma_handler(uint8_t rhport, uint8_t pipe_ix)
+{
+	uint32_t status = USB_REG->HSTDMA[pipe_ix - 1].HSTDMASTATUS;
+	if (status & HSTDMASTATUS_CHANN_ENB)
+	{
+		return; // Ignore EOT_STA interrupt
+	}
+	// Disable DMA interrupt
+	USB_REG->HSTIDR = HSTIDR_DMA_1 << (pipe_ix - 1);
+
+	uint16_t count = pipes[pipe_ix].buflen - ((status & HSTDMASTATUS_BUFF_COUNT) >> HSTDMASTATUS_BUFF_COUNT_Pos);
+    uint8_t ep_addr = hw_pipe_get_endpoint(rhport, pipe_ix);
+    uint8_t dev_addr = hw_pipe_get_address(rhport, pipe_ix);
+	hcd_event_xfer_complete(dev_addr, ep_addr, count, XFER_RESULT_SUCCESS, true);
 }
 
 static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
@@ -653,6 +685,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 
 	if (pipes[pipe].dma)
 	{
+		CleanInValidateCache((uint32_t*) tu_align((uint32_t) buffer, 4), buflen + 31);
 		// pipe->periodic_start = (!dir) && (iso_pipe || int_pipe);
 
 		// /* Start DMA */
