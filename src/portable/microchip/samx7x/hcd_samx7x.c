@@ -699,7 +699,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 
 
         //_usb_h_dma(pipe, false);
-        hw_pipe_setup_dma(rhport, pipe, false);
+        return hw_pipe_setup_dma(rhport, pipe, false);
 	}
 	else
 	{
