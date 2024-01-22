@@ -640,6 +640,15 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 	USB_REG->HSTPIP |= USBHS_HSTPIP_PEN0 << pipe;
 	USB_REG->HSTPIPCFG[pipe] = cfg;
 
+	bool use_dma = EP_DMA_SUPPORT(pipe) && type != TUSB_XFER_CONTROL;
+
+	if (use_dma)
+	{
+		// /* Start DMA */
+		// hri_usbhs_set_HSTPIPCFG_AUTOSW_bit(pipe->hcd->hw, pi);
+		USB_REG->HSTPIPCFG[pipe] |= HSTPIPCFG_AUTOSW;
+	}
+
 	if (USB_REG->HSTPIPISR[pipe] & HSTPIPISR_CFGOK) // check if config is correct
 	{
 		// Setup pipe address
@@ -655,7 +664,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 		USB_REG->HSTPIPIER[pipe] = HSTPIPIER_CTRL_RXSTALLDES | HSTPIPIER_OVERFIES | HSTPIPIER_PERRES;
 		USB_REG->HSTIER |= (HSTISR_PEP_0 | (HSTISR_DMA_0 >> 1)) << pipe;
 
-		pipes[pipe].dma = EP_DMA_SUPPORT(pipe) && type != TUSB_XFER_CONTROL;
+		pipes[pipe].dma = use_dma;
 
 		return true;
 	}
@@ -688,9 +697,6 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 		CleanInValidateCache((uint32_t*) tu_align((uint32_t) buffer, 4), buflen + 31);
 		// pipe->periodic_start = (!dir) && (iso_pipe || int_pipe);
 
-		// /* Start DMA */
-		// hri_usbhs_set_HSTPIPCFG_AUTOSW_bit(pipe->hcd->hw, pi);
-        USB_REG->HSTPIPCFG[pipe] |= HSTPIPCFG_AUTOSW;
 
         //_usb_h_dma(pipe, false);
         hw_pipe_setup_dma(rhport, pipe, false);
