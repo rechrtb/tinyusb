@@ -73,6 +73,16 @@ TU_ATTR_ALWAYS_INLINE static inline void CleanInValidateCache(uint32_t *addr, in
   }
 }
 
+
+extern bool board_trigger_pin(bool set);
+
+static inline void toggle_trigger(void)
+{
+	static bool trigger = false;
+	trigger = !trigger;
+	board_trigger_pin(trigger);
+}
+
 static hw_pipe_t pipes[EP_MAX];
 
 static const uint16_t psize_2_size[] = {8, 16, 32, 64, 128, 256, 512, 1024};
@@ -410,6 +420,7 @@ static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
 		pipes[pipe].proclen += nextlen;
 		USB_REG->HSTDMA[pipe - 1].HSTDMACONTROL = dma_ctrl;
 		add_evt(10006);
+		toggle_trigger();
 		hw_exit_critical(&flags);
 		return true;
 	}
@@ -1016,6 +1027,8 @@ void hcd_int_handler(uint8_t rhport)
 		{
 			breakpoint();
 		}
+
+		toggle_trigger();
 
     //     /* Save number of data no transfered */
     //     n_remain = (dmastat & USBHS_HSTDMASTATUS_BUFF_COUNT_Msk) >> USBHS_HSTDMASTATUS_BUFF_COUNT_Pos;
