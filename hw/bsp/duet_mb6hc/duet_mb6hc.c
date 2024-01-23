@@ -42,6 +42,9 @@
 #define UsbModePin            GPIO(GPIO_PORTC, 20)
 #define UsbDetectPin          GPIO(GPIO_PORTC, 19)
 
+
+#define TriggerPin            GPIO(GPIO_PORTC, 22)
+
 #define UART_TX_PIN           GPIO(GPIO_PORTB, 4)
 #define UART_RX_PIN           GPIO(GPIO_PORTA, 21)
 
@@ -77,6 +80,10 @@ void board_init(void)
   gpio_set_pin_direction(UsbDetectPin, GPIO_DIRECTION_IN);
   gpio_set_pin_pull_mode(UsbDetectPin, GPIO_PULL_UP);
   gpio_set_pin_function(UsbDetectPin, GPIO_PIN_FUNCTION_OFF);
+  // TriggerPin
+  gpio_set_pin_level(TriggerPin, false);
+  gpio_set_pin_direction(TriggerPin, GPIO_DIRECTION_OUT);
+  gpio_set_pin_function(TriggerPin, GPIO_PIN_FUNCTION_OFF);
 
   // Uart via EDBG Com
   _pmc_enable_periph_clock(ID_USART1);
@@ -115,6 +122,11 @@ void USBHS_Handler(void)
 //--------------------------------------------------------------------+
 // Board porting API
 //--------------------------------------------------------------------+
+
+void board_trigger_pin(bool state)
+{
+  gpio_set_pin_level(TriggerPin, state);
+}
 
 void board_usb_set_host(bool host)
 {

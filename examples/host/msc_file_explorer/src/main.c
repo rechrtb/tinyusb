@@ -41,6 +41,7 @@ extern void msc_app_task(void);
 extern void board_usb_enable(bool state);
 extern void board_usb_set_host(bool state);
 extern bool board_usb_detect(void);
+extern bool board_trigger_pin(bool set);
 
 /*------------- MAIN -------------*/
 int main(void)
@@ -50,6 +51,8 @@ int main(void)
   printf("TinyUSB Host MassStorage Explorer Example\r\n");
 
   board_usb_enable(true);
+
+  board_trigger_pin(false);
 
   // init host stack on configured roothub port
   tuh_init(BOARD_TUH_RHPORT);
