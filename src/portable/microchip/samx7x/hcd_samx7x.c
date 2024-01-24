@@ -30,6 +30,8 @@
 
 #if CFG_TUH_ENABLED && CFG_TUSB_MCU == OPT_MCU_SAMX7X
 
+#include <assert.h>
+
 #include "host/hcd.h"
 #include "sam.h"
 #include "common_usb_regs.h"
@@ -71,6 +73,14 @@ static inline void add_evt(uint32_t num)
     evts[evti - 1] = num;
   }
 }
+#endif
+
+#ifndef USE_DUAL_BANK
+#  if TUD_OPT_HIGH_SPEED
+#    define USE_DUAL_BANK   0
+#  else
+#    define USE_DUAL_BANK   1
+#  endif
 #endif
 
 static bool ready = false;
@@ -814,8 +824,6 @@ uint32_t hcd_frame_number(uint8_t rhport)
 
 bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const *ep_desc)
 {
-  add_evt(3);
-
   uint8_t pipe = 0;
   pipe = hw_pipe_find_free(rhport);
   if (pipe >= EP_MAX)
@@ -823,51 +831,49 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
     return false;
   }
 
-  // Reset the pipe
-  hw_pipe_reset(rhport, pipe);
-
   // Configure the pipe
-  USB_REG->HSTPIP |= ((1 << pipe) << HSTPIP_PEN_Pos) & HSTPIP_PEN; // enable pipe
+  hw_pipe_reset(rhport, pipe); // reset the pipe
 
+  // Prepare pipe configuration
   uint32_t cfg = 0;
 
+  static_assert(TUSB_XFER_CONTROL == HSTPIPCFG_PTYPE_CTRL_Val && // check that tusb_xfer_type_t has
+                TUSB_XFER_ISOCHRONOUS == HSTPIPCFG_PTYPE_ISO_Val && // the same numerical value as
+                TUSB_XFER_BULK == HSTPIPCFG_PTYPE_BLK_Val && // the one the peripheral expects, to
+                TUSB_XFER_INTERRUPT == HSTPIPCFG_PTYPE_INTRPT_Val); // avoid a switch statement/ if-else
   tusb_xfer_type_t type = ep_desc->bmAttributes.xfer;
-  cfg |= (HSTPIPCFG_PTYPE & ((uint32_t)type << HSTPIPCFG_PTYPE_Pos));
+  cfg |= (uint32_t)type << HSTPIPCFG_PTYPE_Pos;
 
-  tusb_dir_t dir = ep_desc->bEndpointAddress & TUSB_DIR_IN_MASK;
-  cfg |= (type == TUSB_XFER_CONTROL ? 0 : (dir == TUSB_DIR_OUT ? HSTPIPCFG_PTOKEN_OUT : HSTPIPCFG_PTOKEN_IN));
+  bool in = ep_desc->bEndpointAddress & TUSB_DIR_IN_MASK; // configure the token, for control pipes
+  cfg |= (type == TUSB_XFER_CONTROL ? HSTPIPCFG_PTOKEN_SETUP : // set it to setup token; since it's
+          in ? HSTPIPCFG_PTOKEN_IN : HSTPIPCFG_PTOKEN_OUT); // going to be set to this on setup anyways
 
   uint16_t interval = ep_desc->bInterval;
   tusb_speed_t speed = hcd_port_speed_get(rhport);
-  if (speed == TUSB_SPEED_HIGH && (type == TUSB_XFER_ISOCHRONOUS || type == TUSB_XFER_INTERRUPT))
-  {
-    uint16_t ms = interval > 16 ? 16 : 2 << (interval - 1);
-    interval = (ms > 0xFF) ? 0xFF : (uint8_t)ms;
-  }
-  else
-  {
-    if (type == TUSB_XFER_BULK && dir == TUSB_DIR_OUT && interval < 1)
-    {
-      interval = 0;
-    }
-  }
-  cfg |= (HSTPIPCFG_INTFRQ & ((uint32_t)interval << HSTPIPCFG_INTFRQ_Pos));
+  // TODO: check overriding zero interval for bandwith savings
+  cfg |= (uint32_t)interval << HSTPIPCFG_INTFRQ_Pos;
 
-  bool ping = (speed == TUSB_SPEED_HIGH) && (type == TUSB_XFER_CONTROL || (type == TUSB_XFER_BULK && dir == TUSB_DIR_OUT));
-  cfg |= (ping ? HSTPIPCFG_CTRL_BULK_PINGEN : 0);
+  bool ping = (speed == TUSB_SPEED_HIGH) && (type == TUSB_XFER_CONTROL || (type == TUSB_XFER_BULK && !in));
+  cfg |= ping ? HSTPIPCFG_CTRL_BULK_PINGEN : 0; // use ping on high speed, control & bulk out pipes
 
-  cfg |= (HSTPIPCFG_PEPNUM & ((uint32_t)(ep_desc->bEndpointAddress & 0xF) << HSTPIPCFG_PEPNUM_Pos));
+  // endpoint number, without dir bit
+  cfg |= (HSTPIPCFG_PEPNUM & ((uint32_t)(ep_desc->bEndpointAddress) << HSTPIPCFG_PEPNUM_Pos));
 
-  uint16_t size = ep_desc->wMaxPacketSize & 0x3FF;
-  cfg |= (HSTPIPCFG_PSIZE & ((uint32_t)hw_compute_psize(size) << HSTPIPCFG_PSIZE_Pos));
+  uint16_t size = ep_desc->wMaxPacketSize & (PIPE_MAX_PACKET_SIZE - 1); // mask with max packet size the
+  cfg |= (HSTPIPCFG_PSIZE & ((uint32_t)hw_compute_psize(size) << HSTPIPCFG_PSIZE_Pos)); // hardware supports
 
-  uint8_t bank = ((size >> 11) & 0x3) + 1;
-  cfg |= (HSTPIPCFG_PBK & ((uint32_t)(bank - 1) << HSTPIPCFG_PBK_Pos));
 
   cfg |= HSTPIPCFG_ALLOC;
 
   USB_REG->HSTPIP |= USBHS_HSTPIP_PEN0 << pipe;
   USB_REG->HSTPIPCFG[pipe] = cfg;
+  cfg |= HSTPIPCFG_PBK_1_BANK;
+#if USE_DUAL_BANK
+  if (type == TUSB_XFER_ISOCHRONOUS || type == TUSB_XFER_BULK)
+  {
+    cfg |= HSTPIPCFG_PBK_2_BANK;
+  }
+#endif
 
   bool use_dma = EP_DMA_SUPPORT(pipe) && type != TUSB_XFER_CONTROL;
 
@@ -880,7 +886,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 
   if (USB_REG->HSTPIPISR[pipe] & HSTPIPISR_CFGOK) // check if config is correct
   {
-    // Setup pipe address
+    // setup device address for pipe
     uint8_t reg_i = pipe >> 2;
     uint8_t pos = (pipe & 0x3) << 3;
     uint32_t reg = (&USB_REG->HSTADDR1)[reg_i];
@@ -888,7 +894,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
     reg |= (dev_addr & 0x7F) << pos;
     (&USB_REG->HSTADDR1)[reg_i] = reg;
 
-    // Configure pipe-related interrupts
+    // configure pipe-related interrupts
     USB_REG->HSTPIPICR[pipe] = HSTPIPICR_CTRL_RXSTALLDIC | HSTPIPICR_OVERFIC | HSTPIPISR_PERRI | HSTPIPICR_INTRPT_UNDERFIC;
     USB_REG->HSTPIPIER[pipe] = HSTPIPIER_CTRL_RXSTALLDES | HSTPIPIER_OVERFIES | HSTPIPIER_PERRES;
     USB_REG->HSTIER |= (HSTISR_PEP_0 | (HSTISR_DMA_0 >> 1)) << pipe;
