@@ -78,16 +78,15 @@ static bool ready = false;
 
 typedef struct 
 {
-	uint8_t *buf;
-	uint16_t buflen;
-	uint16_t proclen;
+	uint8_t *buffer;
+	uint16_t total;
+	uint16_t processed;
 	bool dma;
-} hw_pipe_t;
+} hw_pipe_xfer_t;
 
-static hw_pipe_t pipes[EP_MAX];
+static hw_pipe_xfer_t pipe_xfers[EP_MAX];
 
-
-static inline uint8_t hw_pipe_get_endpoint(uint8_t rhport, uint8_t pipe)
+static inline uint8_t hw_pipe_get_ep_addr(uint8_t rhport, uint8_t pipe)
 {
 	(void) rhport;
 	uint8_t ep_num = ((USB_REG->HSTPIPCFG[pipe] & HSTPIPCFG_PEPNUM) >> HSTPIPCFG_PEPNUM_Pos);
@@ -99,7 +98,7 @@ static inline uint8_t hw_pipe_get_endpoint(uint8_t rhport, uint8_t pipe)
 	return ep_num;
 }
 
-static inline uint8_t hw_pipe_get_address(uint8_t rhport, uint8_t pipe)
+static inline uint8_t hw_pipe_get_dev_addr(uint8_t rhport, uint8_t pipe)
 {
 	(void) rhport;
 	uint8_t index = pipe >> 2;
@@ -117,13 +116,13 @@ static inline void hw_pipe_set_token(uint8_t rhport, uint8_t pipe, uint32_t toke
 	USB_REG->HSTPIPCFG[pipe] = tmp;
 }
 
-static uint8_t hw_pipe_find(uint8_t rhport, uint8_t address, uint8_t endpoint)
+static uint8_t hw_pipe_find(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr)
 {
 	(void) rhport;
 	for (uint8_t i = 1; i < EP_MAX; i++)
 	{
-		if (hw_pipe_get_address(rhport, i) == address &&
-			hw_pipe_get_endpoint(rhport, i) == endpoint)
+		if (hw_pipe_get_dev_addr(rhport, i) == dev_addr &&
+			hw_pipe_get_ep_addr(rhport, i) == ep_addr)
 		{
 			return i;
 		}
@@ -136,7 +135,7 @@ static uint8_t hw_pipe_find_free(uint8_t rhport)
 	(void) rhport;
 	for (uint8_t i = 1; i < EP_MAX; i++)
 	{
-		if (!hw_pipe_get_address(rhport, i))
+		if (!hw_pipe_get_dev_addr(rhport, i))
 		{
 			return i;
 		}
@@ -147,13 +146,13 @@ static uint8_t hw_pipe_find_free(uint8_t rhport)
 static void hw_pipe_reset(uint8_t rhport, uint8_t pipe)
 {
 	(void) rhport;
-	memset(&pipes[pipe], 0, sizeof(pipes[pipe]));
+	memset(&pipe_xfers[pipe], 0, sizeof(pipe_xfers[pipe]));
 
 	USB_REG->HSTPIP |= ((1 << pipe) << HSTPIP_PRST_Pos) & HSTPIP_PRST; // put pipe in reset
 	USB_REG->HSTPIP &= ~(((1 << pipe) << HSTPIP_PRST_Pos) & HSTPIP_PRST); // remove pipe from reset
 }
 
-static void hw_pipes_reset(uint8_t rhport)
+static void hw_pipe_xfers_reset(uint8_t rhport)
 {
 	(void) rhport;
 	for (uint8_t i = 0; i < EP_MAX; i++)
@@ -219,12 +218,12 @@ bool hcd_init(uint8_t rhport)
 // 	drv->prvt = prvt;
 // 	drv->hw   = hw;
 
-// 	_usb_h_reset_pipes(drv, false);
-	hw_pipes_reset(rhport);
+// 	_usb_h_reset_pipe_xfers(drv, false);
+	hw_pipe_xfers_reset(rhport);
 
 // 	pd->suspend_start   = 0;
 // 	pd->resume_start    = 0;
-// 	pd->pipes_unfreeze  = 0;
+// 	pd->pipe_xfers_unfreeze  = 0;
 // 	pd->n_ctrl_req_user = 0;
 // 	pd->n_sof_user      = 0;
 // 	pd->dpram_used      = 0;
@@ -298,7 +297,7 @@ void hcd_device_close(uint8_t rhport, uint8_t dev_addr)
 	// Reset every pipe associated with the device
 	for (uint8_t i = 0; i < EP_MAX; i++)
 	{
-		if (hw_pipe_get_address(rhport, i) == dev_addr)
+		if (hw_pipe_get_dev_addr(rhport, i) == dev_addr)
 		{
 			hw_pipe_reset(rhport, i);
 			USB_REG->HSTPIP &= ~(((1 << i) << HSTPIP_PEN_Pos) & HSTPIP_PEN); // disable pipe
@@ -316,9 +315,9 @@ static void hcd_dma_handler(uint8_t rhport, uint8_t pipe_ix)
 	// Disable DMA interrupt
 	USB_REG->HSTIDR = HSTIDR_DMA_1 << (pipe_ix - 1);
 
-	uint16_t count = pipes[pipe_ix].buflen - ((status & HSTDMASTATUS_BUFF_COUNT) >> HSTDMASTATUS_BUFF_COUNT_Pos);
-    uint8_t ep_addr = hw_pipe_get_endpoint(rhport, pipe_ix);
-    uint8_t dev_addr = hw_pipe_get_address(rhport, pipe_ix);
+	uint16_t count = pipe_xfers[pipe_ix].total - ((status & HSTDMASTATUS_BUFF_COUNT) >> HSTDMASTATUS_BUFF_COUNT_Pos);
+    uint8_t ep_addr = hw_pipe_get_ep_addr(rhport, pipe_ix);
+    uint8_t dev_addr = hw_pipe_get_dev_addr(rhport, pipe_ix);
 	hcd_event_xfer_complete(dev_addr, ep_addr, count, XFER_RESULT_SUCCESS, true);
 }
 
@@ -331,7 +330,7 @@ static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
     // struct usb_h_desc *drv  = (struct usb_h_desc *)pipe->hcd;
     // uint16_t           mps  = psize_2_size[hri_usbhs_read_HSTPIPCFG_PSIZE_bf(drv->hw, pi)];
     // hal_atomic_t       flags;
-    // uint8_t *          buf;
+    // uint8_t *          buffer;
     // uint32_t           size, count;
     // uint32_t           n_next, n_max;
     // uint32_t           dma_ctrl = 0;
@@ -342,12 +341,12 @@ static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
     // }
 
 
-    // _usb_h_load_x_param(pipe, &buf, &size, &count);
+    // _usb_h_load_x_param(pipe, &buffer, &size, &count);
 
-    uint8_t endpoint = hw_pipe_get_endpoint(rhport, pipe);
+    uint8_t endpoint = hw_pipe_get_ep_addr(rhport, pipe);
     uint16_t max_size  = 1 << (((USB_REG->HSTPIPCFG[pipe] & HSTPIPCFG_PSIZE) >> HSTPIPCFG_PSIZE_Pos) + 3);
 
-	uint32_t nextlen = pipes[pipe].buflen - pipes[pipe].proclen;
+	uint32_t nextlen = pipe_xfers[pipe].total - pipe_xfers[pipe].processed;
 	uint32_t maxlen = 0x10000;
 
 	if (endpoint & TUSB_DIR_IN_MASK)
@@ -371,7 +370,7 @@ static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
     }
     else
     {
-        if ((pipes[pipe].buflen & (max_size - 1)) != 0)
+        if ((pipe_xfers[pipe].total & (max_size - 1)) != 0)
         {
             dma_ctrl |= HSTDMACONTROL_END_B_EN;
         }
@@ -379,7 +378,7 @@ static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
 
 	add_evt(10000);
 
-    USB_REG->HSTDMA[pipe - 1].HSTDMAADDRESS = (uint32_t)&pipes[pipe].buf[pipes[pipe].proclen];
+    USB_REG->HSTDMA[pipe - 1].HSTDMAADDRESS = (uint32_t)&pipe_xfers[pipe].buffer[pipe_xfers[pipe].processed];
     dma_ctrl |= HSTDMACONTROL_END_BUFFIT | HSTDMACONTROL_CHANN_ENB;
 
 	hw_enter_critical(&flags);
@@ -395,7 +394,7 @@ static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
 		add_evt(10004);
 		USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_NBUSYBKEC | HSTPIPIDR_PFREEZEC;
 		add_evt(10005);
-		pipes[pipe].proclen += nextlen;
+		pipe_xfers[pipe].processed += nextlen;
 		USB_REG->HSTDMA[pipe - 1].HSTDMACONTROL = dma_ctrl;
 		add_evt(10006);
 		toggle_trigger();
@@ -433,7 +432,7 @@ static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
     //         pipe->zlp = 0;
     //     }
     //     /* Start USB DMA to fill or read FIFO of the selected endpoint */
-    //     hri_usbhs_write_HSTDMAADDRESS_reg(drv->hw, dmai, (uint32_t)&buf[count]);
+    //     hri_usbhs_write_HSTDMAADDRESS_reg(drv->hw, dmai, (uint32_t)&buffer[count]);
     //     dma_ctrl |= USBHS_HSTDMACONTROL_END_BUFFIT | USBHS_HSTDMACONTROL_CHANN_ENB;
     //     /* Disable IRQs to have a short sequence
     //     * between read of EOT_STA and DMA enable
@@ -685,7 +684,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 		USB_REG->HSTPIPIER[pipe] = HSTPIPIER_CTRL_RXSTALLDES | HSTPIPIER_OVERFIES | HSTPIPIER_PERRES;
 		USB_REG->HSTIER |= (HSTISR_PEP_0 | (HSTISR_DMA_0 >> 1)) << pipe;
 
-		pipes[pipe].dma = use_dma;
+		pipe_xfers[pipe].dma = use_dma;
 
 		return true;
 	}
@@ -695,7 +694,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 }
 
 
-bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *buffer, uint16_t buflen)
+bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *buffer, uint16_t total)
 {
 	add_evt(2);
 
@@ -711,13 +710,13 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 		}
 	}
 
-	pipes[pipe].buf = buffer;
-	pipes[pipe].buflen = buflen;
-	pipes[pipe].proclen = 0;
+	pipe_xfers[pipe].buffer = buffer;
+	pipe_xfers[pipe].total = total;
+	pipe_xfers[pipe].processed = 0;
 
-	if (pipes[pipe].dma)
+	if (pipe_xfers[pipe].dma)
 	{
-		CleanInValidateCache((uint32_t*) tu_align((uint32_t) buffer, 4), buflen + 31);
+		CleanInValidateCache((uint32_t*) tu_align((uint32_t) buffer, 4), total + 31);
 		// pipe->periodic_start = (!dir) && (iso_pipe || int_pipe);
 
 
@@ -746,7 +745,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 
 			volatile uint8_t *dst = EP_GET_FIFO_PTR(pipe, 8);
 			volatile uint8_t *src = buffer;
-			for (size_t i = 0; i < buflen; i++)
+			for (size_t i = 0; i < total; i++)
 			{
 				*dst++ = *src++;
 			}
@@ -838,8 +837,8 @@ void hcd_int_handler(uint8_t rhport)
 		uint8_t pipe = 23 - __CLZ(isr & USBHS_HSTISR_PEP__Msk);
 		uint32_t pipisr = USB_REG->HSTPIPISR[pipe];
 
-		uint8_t address = hw_pipe_get_address(rhport, pipe);
-		uint8_t endpoint = hw_pipe_get_endpoint(rhport, pipe);
+		uint8_t address = hw_pipe_get_dev_addr(rhport, pipe);
+		uint8_t endpoint = hw_pipe_get_ep_addr(rhport, pipe);
 
 		if (pipisr & HSTPIPISR_CTRL_RXSTALLDI)
 		{
@@ -896,14 +895,14 @@ void hcd_int_handler(uint8_t rhport)
 			}
 
 			// _usb_h_in(p);
-			if (pipes[pipe].buflen)
+			if (pipe_xfers[pipe].total)
 			{
 				add_evt(21);
 				// /* Read byte count */
 				// n_rx = hri_usbhs_read_HSTPIPISR_PBYCT_bf(drv->hw, pi);
 				uint16_t rx = (USB_REG->HSTPIPISR[pipe] & USBHS_HSTPIPISR_PBYCT_Msk) >> USBHS_HSTPIPISR_PBYCT_Pos;
 				volatile uint8_t *src = EP_GET_FIFO_PTR(pipe, 8);
-				volatile uint8_t *dst = pipes[pipe].buf + pipes[pipe].proclen;
+				volatile uint8_t *dst = pipe_xfers[pipe].buffer + pipe_xfers[pipe].processed;
 				for (size_t i = 0; i < rx; i++)
 				{
 					*dst++ = *src++;
@@ -911,12 +910,12 @@ void hcd_int_handler(uint8_t rhport)
 
 				USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_FIFOCONC;
 
-				pipes[pipe].proclen += rx;
+				pipe_xfers[pipe].processed += rx;
 
-				if (pipes[pipe].proclen >= pipes[pipe].buflen)
+				if (pipe_xfers[pipe].processed >= pipe_xfers[pipe].total)
 				{
 					add_evt(2300);
-					hcd_event_xfer_complete(address, endpoint, pipes[pipe].proclen, XFER_RESULT_SUCCESS, true);
+					hcd_event_xfer_complete(address, endpoint, pipe_xfers[pipe].processed, XFER_RESULT_SUCCESS, true);
 					add_evt(2301);
 				}
 				else
@@ -951,7 +950,7 @@ void hcd_int_handler(uint8_t rhport)
 			// hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXOUTI);
 			USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_TXOUTEC;
 
-			hcd_event_xfer_complete(address, endpoint, pipes[pipe].buflen, XFER_RESULT_SUCCESS, true);
+			hcd_event_xfer_complete(address, endpoint, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
 			add_evt(31);
 			return;
 		}
@@ -967,14 +966,14 @@ void hcd_int_handler(uint8_t rhport)
     //     int8_t              pi  = 7 - __CLZ(isr & imr & USBHS_HSTISR_DMA__Msk);
 		uint8_t pipe = 7 - __CLZ(isr & USBHS_HSTISR_DMA__Msk);
 
-		uint8_t address = hw_pipe_get_address(rhport, pipe);
-		uint8_t endpoint = hw_pipe_get_endpoint(rhport, pipe);
+		uint8_t address = hw_pipe_get_dev_addr(rhport, pipe);
+		uint8_t endpoint = hw_pipe_get_ep_addr(rhport, pipe);
     //     struct _usb_h_prvt *pd = (struct _usb_h_prvt *)drv->prvt;
     //     struct usb_h_pipe * p;
     //     uint32_t            imr = hri_usbhs_read_HSTIMR_reg(drv->hw);
 
     //     uint32_t dmastat;
-    //     uint8_t *buf;
+    //     uint8_t *buffer;
     //     uint32_t size, count;
     //     uint32_t n_remain;
     //     if (pi < 0) {
@@ -1011,14 +1010,14 @@ void hcd_int_handler(uint8_t rhport)
     //     /* Save number of data no transfered */
     //     n_remain = (dmastat & USBHS_HSTDMASTATUS_BUFF_COUNT_Msk) >> USBHS_HSTDMASTATUS_BUFF_COUNT_Pos;
         uint16_t remaining = (stat & HSTDMASTATUS_BUFF_COUNT) >> HSTDMASTATUS_BUFF_COUNT_Pos;
-		pipes[pipe].proclen -= remaining;
+		pipe_xfers[pipe].processed -= remaining;
 
 
-		if (pipes[pipe].proclen >= pipes[pipe].buflen)
+		if (pipe_xfers[pipe].processed >= pipe_xfers[pipe].total)
 		{
 			add_evt(1010);
-			pipes[pipe].buf = 0;
-			hcd_event_xfer_complete(address, endpoint, pipes[pipe].proclen, XFER_RESULT_SUCCESS, true);
+			pipe_xfers[pipe].buffer = 0;
+			hcd_event_xfer_complete(address, endpoint, pipe_xfers[pipe].processed, XFER_RESULT_SUCCESS, true);
 			add_evt(1011);
 		}
 		// else
@@ -1027,8 +1026,8 @@ void hcd_int_handler(uint8_t rhport)
 		// }
 
     //     if (n_remain) {
-    //         _usb_h_load_x_param(p, &buf, &size, &count);
-    //         (void)buf;
+    //         _usb_h_load_x_param(p, &buffer, &size, &count);
+    //         (void)buffer;
     //         (void)size;
     //         /* Transfer no complete (short packet or ZLP) then:
     //         * Update number of transfered data
