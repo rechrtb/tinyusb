@@ -85,6 +85,11 @@ typedef struct
 
 static hw_pipe_xfer_t pipe_xfers[EP_MAX];
 
+static inline bool hw_pipe_enabled(uint8_t rhport, uint8_t pipe)
+{
+  return (USB_REG->HSTPIP & (USBHS_HSTPIP_PEN0 << pipe));
+}
+
 static inline uint8_t hw_pipe_get_ep_addr(uint8_t rhport, uint8_t pipe)
 {
   (void)rhport;
@@ -94,7 +99,7 @@ static inline uint8_t hw_pipe_get_ep_addr(uint8_t rhport, uint8_t pipe)
     bool in = ((USB_REG->HSTPIPCFG[pipe] & HSTPIPCFG_PTOKEN) >> HSTPIPCFG_PTOKEN_Pos) == HSTPIPCFG_PTOKEN_IN_Val;
     return ep_num | (in ? TUSB_DIR_IN_MASK : 0x00);
   }
-  return ep_num; // ep 0 in and out on the same pipe
+  return ep_num; // ep0 in and out on the same pipe
 }
 
 static inline uint8_t hw_pipe_get_dev_addr(uint8_t rhport, uint8_t pipe)
@@ -118,23 +123,32 @@ static inline void hw_pipe_set_token(uint8_t rhport, uint8_t pipe, uint32_t toke
 static uint8_t hw_pipe_find(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr)
 {
   (void)rhport;
-  for (uint8_t i = 1; i < EP_MAX; i++)
+
+  if (!(ep_addr & (TUSB_DIR_IN_MASK - 1))) // check if ep0, which has in and out on same pipe
   {
-    if (hw_pipe_get_dev_addr(rhport, i) == dev_addr &&
+    ep_addr = 0;
+  }
+
+  for (uint8_t i = 0; i < EP_MAX; i++)
+  {
+    if (hw_pipe_enabled(rhport, i) &&
+        hw_pipe_get_dev_addr(rhport, i) == dev_addr &&
         hw_pipe_get_ep_addr(rhport, i) == ep_addr)
     {
       return i;
     }
   }
+
   return EP_MAX;
 }
+
 
 static uint8_t hw_pipe_find_free(uint8_t rhport)
 {
   (void)rhport;
-  for (uint8_t i = 1; i < EP_MAX; i++)
+  for (uint8_t i = 0; i < EP_MAX; i++)
   {
-    if (!hw_pipe_get_dev_addr(rhport, i))
+    if (!hw_pipe_enabled(rhport, i))
     {
       return i;
     }
@@ -298,7 +312,7 @@ void hcd_device_close(uint8_t rhport, uint8_t dev_addr)
   // Reset every pipe associated with the device
   for (uint8_t i = 0; i < EP_MAX; i++)
   {
-    if (hw_pipe_get_dev_addr(rhport, i) == dev_addr)
+    if (hw_pipe_enabled(rhport, i) && hw_pipe_get_dev_addr(rhport, i) == dev_addr)
     {
       hw_pipe_reset(rhport, i);
       USB_REG->HSTPIP &= ~(((1 << i) << HSTPIP_PEN_Pos) & HSTPIP_PEN); // disable pipe
@@ -501,14 +515,10 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   add_evt(6);
 
   uint8_t pipe = 0;
-
-  if (dev_addr)
+  pipe = hw_pipe_find(rhport, dev_addr, 0);
+  if (pipe >= EP_MAX)
   {
-    pipe = hw_pipe_find(rhport, dev_addr, 0);
-    if (pipe >= EP_MAX)
-    {
-      return false;
-    }
+    return false;
   }
 
   // hri_usbhs_write_HSTPIPCFG_PTOKEN_bf(drv->hw, pi, USBHS_HSTPIPCFG_PTOKEN_SETUP_Val);
@@ -605,14 +615,10 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
   add_evt(3);
 
   uint8_t pipe = 0;
-
-  if (dev_addr)
+  pipe = hw_pipe_find_free(rhport);
+  if (pipe >= EP_MAX)
   {
-    pipe = hw_pipe_find_free(rhport);
-    if (pipe >= EP_MAX)
-    {
-      return false;
-    }
+    return false;
   }
 
   // Reset the pipe
@@ -699,15 +705,10 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
   add_evt(2);
 
   uint8_t pipe = 0;
-  uint8_t ep_num = ep_addr & ~TUSB_DIR_IN_MASK;
-
-  if (dev_addr)
+  pipe = hw_pipe_find(rhport, dev_addr, ep_addr);
+  if (pipe >= EP_MAX)
   {
-    pipe = hw_pipe_find(rhport, dev_addr, ep_num == 0 ? ep_num : ep_addr);
-    if (pipe >= EP_MAX)
-    {
-      return false;
-    }
+    return false;
   }
 
   pipe_xfers[pipe].buffer = buffer;
