@@ -577,7 +577,7 @@ static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
   uint16_t max_size = 1 << (((USB_REG->HSTPIPCFG[pipe] & HSTPIPCFG_PSIZE) >> HSTPIPCFG_PSIZE_Pos) + 3);
 
   uint32_t nextlen = pipe_xfers[pipe].total - pipe_xfers[pipe].processed;
-  uint32_t maxlen = 0x10000;
+  uint32_t maxlen = DMA_TRANS_MAX;
 
   if (endpoint & TUSB_DIR_IN_MASK)
   {
@@ -592,7 +592,7 @@ static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
     nextlen = maxlen;
   }
 
-  uint32_t dma_ctrl = USBHS_HSTDMACONTROL_BUFF_LENGTH((nextlen == 0x10000) ? 0 : nextlen);
+  uint32_t dma_ctrl = USBHS_HSTDMACONTROL_BUFF_LENGTH((nextlen == DMA_TRANS_MAX) ? 0 : nextlen);
 
   if (endpoint & TUSB_DIR_IN_MASK)
   {
@@ -967,56 +967,49 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 
 static void hw_handle_rh_int(uint8_t rhport, uint32_t isr)
 {
+  // Device reset
   if (isr & HSTISR_RSTI)
   {
-    USB_REG->CTRL &= ~CTRL_FRZCLK;
-    while (!(USB_REG->SR & SR_CLKUSABLE))
-      ;
     USB_REG->HSTICR |= HSTICR_RSTIC;
     USB_REG->HSTIDR |= HSTIDR_RSTIEC;
     ready = true;
     return;
   }
 
+  // Device disconnection
   if (isr & HSTISR_DDISCI)
   {
-    // TODO
+    USB_REG->HSTICR = HSTICR_DDISCIC | HSTICR_DCONNIC;
+    USB_REG->HSTIDR = HSTIDR_DDISCIEC | HSTIDR_HWUPIEC | HSTIDR_RSMEDIEC | HSTIDR_RXRSMIEC;
+    USB_REG->HSTCTRL &= ~HSTCTRL_RESET;
+    USB_REG->HSTICR = HSTICR_DCONNIC | HSTICR_HWUPIC | HSTICR_RSMEDIC | HSTICR_RXRSMIC;
+    USB_REG->HSTIER = HSTIER_DCONNIES | HSTIER_HWUPIES | HSTIER_RSMEDIES | HSTIER_RXRSMIES;
+    hcd_event_device_remove(rhport, true);
+    return;
   }
 
+  // Device connection
   if (isr & HSTISR_DCONNI)
   {
     USB_REG->HSTICR |= HSTICR_DCONNIC;
     USB_REG->HSTIDR |= HSTISR_DCONNI;
-
-    // Enable disconnection interrupt
     USB_REG->HSTIER |= HSTIER_DDISCIES;
-
-    // Enable SOF
     USB_REG->HSTCTRL |= HSTCTRL_SOFE;
-
-    // Notify tinyUSB that device attached to initiate next states
     hcd_event_device_attach(rhport, true);
-
     return;
   }
 
+  // Host wakeup
   if (isr & HSTISR_HWUPI)
   {
     USB_REG->CTRL &= ~CTRL_FRZCLK;
     while (!(USB_REG->SR & SR_CLKUSABLE));
 
-    // Disable HWUPI interrupt
     USB_REG->HSTIDR |= HSTIDR_HWUPIEC;
-
-    // Enable VBUS
     USB_REG->SFR |= SFR_VBUSRQS;
-
     USB_REG->HSTICR |= HSTICR_HWUPIC;
     USB_REG->HSTIDR |= HSTIDR_HWUPIEC;
-
-    // Enable connect interrupt
     USB_REG->HSTIER |= HSTIER_DCONNIES;
-
     return;
   }
 }
