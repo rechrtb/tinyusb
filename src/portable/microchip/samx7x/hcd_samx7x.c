@@ -34,6 +34,46 @@
 #include "sam.h"
 #include "common_usb_regs.h"
 
+#define DEBUG 1
+
+
+
+#if DEBUG
+extern bool board_trigger_pin(bool set);
+
+static inline void toggle_trigger(void)
+{
+	static bool trigger = false;
+	trigger = !trigger;
+	board_trigger_pin(trigger);
+}
+
+void breakpoint(void)
+{
+	volatile int a = 0;
+	a++;
+}
+
+#define MAX_EVENTS		1000
+
+static uint32_t evts[MAX_EVENTS];
+static uint32_t evti = 0;
+
+static inline void add_evt(uint32_t num)
+{
+	if (evti == 0)
+	{
+		memset(&evts, 0, sizeof(evts));
+	}
+
+	if (evti < MAX_EVENTS)
+	{
+		++evti;
+		evts[evti - 1] = num;
+	}
+}
+#endif
+
 static bool ready = false;
 
 #define EP_GET_FIFO_PTR(ep, scale) (((TU_XSTRCAT(TU_STRCAT(uint, scale),_t) (*)[0x8000 / ((scale) / 8)])FIFO_RAM_ADDR)[(ep)])
@@ -59,7 +99,6 @@ static inline void hw_exit_critical(volatile uint32_t *atomic)
 	__set_PRIMASK(*atomic);
 }
 
-
 TU_ATTR_ALWAYS_INLINE static inline void CleanInValidateCache(uint32_t *addr, int32_t size)
 {
   if (SCB->CCR & SCB_CCR_DC_Msk)
@@ -73,42 +112,9 @@ TU_ATTR_ALWAYS_INLINE static inline void CleanInValidateCache(uint32_t *addr, in
   }
 }
 
-
-extern bool board_trigger_pin(bool set);
-
-static inline void toggle_trigger(void)
-{
-	static bool trigger = false;
-	trigger = !trigger;
-	board_trigger_pin(trigger);
-}
-
 static hw_pipe_t pipes[EP_MAX];
 
 static const uint16_t psize_2_size[] = {8, 16, 32, 64, 128, 256, 512, 1024};
-
-void breakpoint(void)
-{
-	volatile int a = 0;
-	a++;
-}
-
-static uint32_t evts[1000];
-static uint32_t evti = 0;
-
-static inline void add_evt(uint32_t num)
-{
-	if (evti == 0)
-	{
-		memset(&evts, 0, sizeof(evts));
-	}
-
-	if (evti < 1000)
-	{
-		++evti;
-		evts[evti - 1] = num;
-	}
-}
 
 static inline uint8_t hw_pipe_get_endpoint(uint8_t rhport, uint8_t pipe)
 {
