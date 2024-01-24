@@ -87,6 +87,7 @@ static hw_pipe_xfer_t pipe_xfers[EP_MAX];
 
 static inline bool hw_pipe_enabled(uint8_t rhport, uint8_t pipe)
 {
+  (void) rhport;
   return (USB_REG->HSTPIP & (USBHS_HSTPIP_PEN0 << pipe));
 }
 
@@ -206,6 +207,237 @@ static uint16_t hw_compute_psize(uint16_t size)
   return 7;
 }
 
+
+static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
+{
+  add_evt(5);
+
+  uint8_t pipe = 23 - __CLZ(isr & USBHS_HSTISR_PEP__Msk);
+  uint32_t pipisr = USB_REG->HSTPIPISR[pipe];
+
+  uint8_t address = hw_pipe_get_dev_addr(rhport, pipe);
+  uint8_t endpoint = hw_pipe_get_ep_addr(rhport, pipe);
+
+  if (pipisr & HSTPIPISR_CTRL_RXSTALLDI)
+  {
+    add_evt(88);
+    USB_REG->HSTPIPICR[pipe] = HSTPIPICR_CTRL_RXSTALLDIC;
+    USB_REG->HSTPIPIER[pipe] = HSTPIPIER_RSTDTS;
+    hw_pipe_abort(rhport, pipe);
+    hcd_event_xfer_complete(address, endpoint, 0, XFER_RESULT_STALLED, true);
+    return;
+  }
+
+  if (pipisr & HSTPIPISR_PERRI)
+  {
+    add_evt(89);
+    xfer_result_t res = (USB_REG->HSTPIPERR[pipe] & HSTPIPERR_TIMEOUT) ? XFER_RESULT_TIMEOUT : XFER_RESULT_FAILED;
+    hw_pipe_abort(rhport, pipe);
+    hcd_event_xfer_complete(address, endpoint, 0, res, true);
+    return;
+  }
+
+  if (pipisr & HSTPIPISR_CTRL_TXSTPI)
+  {
+    add_evt(10);
+    USB_REG->HSTPIPIER[pipe] = HSTPIPIER_PFREEZES;
+    // hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXSTPI);
+    USB_REG->HSTPIPICR[pipe] = HSTPIPICR_CTRL_TXSTPIC;
+    // hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXSTPI);
+    USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_CTRL_TXSTPEC;
+    hcd_event_xfer_complete(address, endpoint, 8, XFER_RESULT_SUCCESS, true);
+    add_evt(11);
+    return;
+  }
+
+  /* RXIN: Full packet received */
+  if (pipisr & HSTPIPISR_RXINI || pipisr & HSTPIPISR_SHORTPACKETI)
+  {
+    USB_REG->HSTPIPIER[pipe] = HSTPIPIER_PFREEZES;
+    add_evt(20);
+
+    // hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_RXINI | USBHS_HSTPIPISR_SHORTPACKETI);
+    USB_REG->HSTPIPICR[pipe] = HSTPIPICR_RXINIC | HSTPIPICR_SHORTPACKETIC;
+
+    /* In case of low USB speed and with a high CPU frequency,
+      * a ACK from host can be always running on USB line
+      * then wait end of ACK on IN pipe.
+      */
+    // if (!hri_usbhs_read_HSTPIPINRQ_reg(drv->hw, pi)) {
+    // 	while (!hri_usbhs_get_HSTPIPIMR_reg(drv->hw, pi, USBHS_HSTPIPIMR_PFREEZE)) {
+    // 	}
+    // }
+    if (!(USB_REG->HSTPIPINRQ[pipe]))
+    {
+      while (!(USB_REG->HSTPIPIMR[pipe] & HSTPIPIMR_PFREEZE))
+      {
+      }
+    }
+
+    // _usb_h_in(p);
+    if (pipe_xfers[pipe].total)
+    {
+      add_evt(21);
+      // /* Read byte count */
+      // n_rx = hri_usbhs_read_HSTPIPISR_PBYCT_bf(drv->hw, pi);
+      uint16_t rx = (USB_REG->HSTPIPISR[pipe] & USBHS_HSTPIPISR_PBYCT_Msk) >> USBHS_HSTPIPISR_PBYCT_Pos;
+      volatile uint8_t *src = EP_GET_FIFO_PTR(pipe, 8);
+      volatile uint8_t *dst = pipe_xfers[pipe].buffer + pipe_xfers[pipe].processed;
+      for (size_t i = 0; i < rx; i++)
+      {
+        *dst++ = *src++;
+      }
+
+      USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_FIFOCONC;
+
+      pipe_xfers[pipe].processed += rx;
+
+      if (pipe_xfers[pipe].processed >= pipe_xfers[pipe].total)
+      {
+        add_evt(2300);
+        hcd_event_xfer_complete(address, endpoint, pipe_xfers[pipe].processed, XFER_RESULT_SUCCESS, true);
+        add_evt(2301);
+      }
+      else
+      {
+        USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_PFREEZEC;
+      }
+    }
+    else
+    {
+      // Zero-length packet
+      add_evt(25);
+      // // 	hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIER_PFREEZES);
+      // USB_REG->HSTPIPIER[pipe] = HSTPIPIER_PFREEZES;
+      // // 	hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIDR_SHORTPACKETIEC | USBHS_HSTPIPIDR_RXINEC);
+      // USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_SHORTPACKETIEC | HSTPIPIDR_RXINEC;
+      // // 	hri_usbhs_write_HSTPIPINRQ_reg(drv->hw, pi, 0);
+      // USB_REG->HSTPIPINRQ[pipe] = 0;
+      USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_FIFOCONC;
+      hcd_event_xfer_complete(address, endpoint, 0, XFER_RESULT_SUCCESS, true);
+      add_evt(26);
+    }
+    return;
+  }
+
+  if (pipisr & HSTPIPISR_TXOUTI)
+  {
+    add_evt(30);
+    // hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIER_PFREEZES);
+    USB_REG->HSTPIPIER[pipe] = HSTPIPIER_PFREEZES;
+    // hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXOUTI);
+    USB_REG->HSTPIPICR[pipe] = HSTPIPICR_TXOUTIC;
+    // hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXOUTI);
+    USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_TXOUTEC;
+
+    hcd_event_xfer_complete(address, endpoint, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
+    add_evt(31);
+    return;
+  }
+
+  add_evt(pipisr);
+}
+
+static void hw_handle_dma_int(uint8_t rhport, uint32_t isr)
+{
+  add_evt(1000);
+
+  //     int8_t              pi  = 7 - __CLZ(isr & imr & USBHS_HSTISR_DMA__Msk);
+  uint8_t pipe = 7 - __CLZ(isr & USBHS_HSTISR_DMA__Msk);
+
+  uint8_t address = hw_pipe_get_dev_addr(rhport, pipe);
+  uint8_t endpoint = hw_pipe_get_ep_addr(rhport, pipe);
+  //     struct _usb_h_prvt *pd = (struct _usb_h_prvt *)drv->prvt;
+  //     struct usb_h_pipe * p;
+  //     uint32_t            imr = hri_usbhs_read_HSTIMR_reg(drv->hw);
+
+  //     uint32_t dmastat;
+  //     uint8_t *buffer;
+  //     uint32_t size, count;
+  //     uint32_t n_remain;
+  //     if (pi < 0) {
+  //         return;
+  //     }
+
+  //     dmastat = hri_usbhs_read_HSTDMASTATUS_reg(drv->hw, pi - 1);
+  uint32_t stat = USB_REG->HSTDMA[pipe - 1].HSTDMASTATUS;
+  //     if (dmastat & USBHS_HSTDMASTATUS_CHANN_ENB) {
+  //         return; /* Ignore EOT_STA interrupt */
+  //     }
+  if (stat & HSTDMASTATUS_CHANN_ENB)
+  {
+    add_evt(1001);
+    return;
+  }
+
+  //     p = &pd->pipe_pool[pi];
+  // #if _HPL_USB_H_HBW_SP
+  //     if (p->high_bw_out) {
+  //         /* Streaming out, no ACK, assume everything sent */
+  //         _usb_h_ll_dma_out(p, _usb_h_ll_get(pi, p->bank));
+  //         return;
+  //     }
+  // #endif
+
+  if (pipe == 2)
+  {
+    breakpoint();
+  }
+
+  toggle_trigger();
+
+  //     /* Save number of data no transfered */
+  //     n_remain = (dmastat & USBHS_HSTDMASTATUS_BUFF_COUNT_Msk) >> USBHS_HSTDMASTATUS_BUFF_COUNT_Pos;
+  uint16_t remaining = (stat & HSTDMASTATUS_BUFF_COUNT) >> HSTDMASTATUS_BUFF_COUNT_Pos;
+  pipe_xfers[pipe].processed -= remaining;
+
+  if (pipe_xfers[pipe].processed >= pipe_xfers[pipe].total)
+  {
+    add_evt(1010);
+    pipe_xfers[pipe].buffer = 0;
+    hcd_event_xfer_complete(address, endpoint, pipe_xfers[pipe].processed, XFER_RESULT_SUCCESS, true);
+    add_evt(1011);
+  }
+  // else
+  // {
+  // 	hw_pipe_setup_dma(rhport, pipe, remaining);
+  // }
+
+  //     if (n_remain) {
+  //         _usb_h_load_x_param(p, &buffer, &size, &count);
+  //         (void)buffer;
+  //         (void)size;
+  //         /* Transfer no complete (short packet or ZLP) then:
+  //         * Update number of transfered data
+  //         */
+  //         count -= n_remain;
+  //         _usb_h_save_x_param(p, count);
+  //     }
+
+  //     /* Pipe IN: freeze status may delayed */
+  //     if (p->ep & 0x80) {
+  //         if (!hri_usbhs_get_HSTPIPIMR_reg(drv->hw, pi, USBHS_HSTPIPIMR_PFREEZE)) {
+  //             /* Pipe is not frozen in case of :
+  //             * - incomplete transfer when the request number INRQ is not
+  //             *   complete.
+  //             * - low USB speed and with a high CPU frequency,
+  //             *   a ACK from host can be always running on USB line.
+  //             */
+  //             if (n_remain) {
+  //                 /* Freeze pipe in case of incomplete transfer */
+  //                 hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIMR_PFREEZE);
+  //             } else {
+  //                 /* Wait freeze in case of ACK on going */
+  //                 while (!hri_usbhs_get_HSTPIPIMR_reg(drv->hw, pi, USBHS_HSTPIPIMR_PFREEZE)) {
+  //                 }
+  //             }
+  //         }
+  //     }
+  //     _usb_h_dma(p, (bool)n_remain);
+
+  return;
+}
+
 bool hcd_init(uint8_t rhport)
 {
   add_evt(12);
@@ -318,22 +550,6 @@ void hcd_device_close(uint8_t rhport, uint8_t dev_addr)
       USB_REG->HSTPIP &= ~(((1 << i) << HSTPIP_PEN_Pos) & HSTPIP_PEN); // disable pipe
     }
   }
-}
-
-static void hcd_dma_handler(uint8_t rhport, uint8_t pipe_ix)
-{
-  uint32_t status = USB_REG->HSTDMA[pipe_ix - 1].HSTDMASTATUS;
-  if (status & HSTDMASTATUS_CHANN_ENB)
-  {
-    return; // Ignore EOT_STA interrupt
-  }
-  // Disable DMA interrupt
-  USB_REG->HSTIDR = HSTIDR_DMA_1 << (pipe_ix - 1);
-
-  uint16_t count = pipe_xfers[pipe_ix].total - ((status & HSTDMASTATUS_BUFF_COUNT) >> HSTDMASTATUS_BUFF_COUNT_Pos);
-  uint8_t ep_addr = hw_pipe_get_ep_addr(rhport, pipe_ix);
-  uint8_t dev_addr = hw_pipe_get_dev_addr(rhport, pipe_ix);
-  hcd_event_xfer_complete(dev_addr, ep_addr, count, XFER_RESULT_SUCCESS, true);
 }
 
 static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
@@ -834,233 +1050,14 @@ void hcd_int_handler(uint8_t rhport)
 
   if (isr & HSTISR_PEP_)
   {
-    add_evt(5);
-
-    uint8_t pipe = 23 - __CLZ(isr & USBHS_HSTISR_PEP__Msk);
-    uint32_t pipisr = USB_REG->HSTPIPISR[pipe];
-
-    uint8_t address = hw_pipe_get_dev_addr(rhport, pipe);
-    uint8_t endpoint = hw_pipe_get_ep_addr(rhport, pipe);
-
-    if (pipisr & HSTPIPISR_CTRL_RXSTALLDI)
-    {
-      add_evt(88);
-      USB_REG->HSTPIPICR[pipe] = HSTPIPICR_CTRL_RXSTALLDIC;
-      USB_REG->HSTPIPIER[pipe] = HSTPIPIER_RSTDTS;
-      hw_pipe_abort(rhport, pipe);
-      hcd_event_xfer_complete(address, endpoint, 0, XFER_RESULT_STALLED, true);
-      return;
-    }
-
-    if (pipisr & HSTPIPISR_PERRI)
-    {
-      add_evt(89);
-      xfer_result_t res = (USB_REG->HSTPIPERR[pipe] & HSTPIPERR_TIMEOUT) ? XFER_RESULT_TIMEOUT : XFER_RESULT_FAILED;
-      hw_pipe_abort(rhport, pipe);
-      hcd_event_xfer_complete(address, endpoint, 0, res, true);
-      return;
-    }
-
-    if (pipisr & HSTPIPISR_CTRL_TXSTPI)
-    {
-      add_evt(10);
-      USB_REG->HSTPIPIER[pipe] = HSTPIPIER_PFREEZES;
-      // hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXSTPI);
-      USB_REG->HSTPIPICR[pipe] = HSTPIPICR_CTRL_TXSTPIC;
-      // hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXSTPI);
-      USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_CTRL_TXSTPEC;
-      hcd_event_xfer_complete(address, endpoint, 8, XFER_RESULT_SUCCESS, true);
-      add_evt(11);
-      return;
-    }
-
-    /* RXIN: Full packet received */
-    if (pipisr & HSTPIPISR_RXINI || pipisr & HSTPIPISR_SHORTPACKETI)
-    {
-      USB_REG->HSTPIPIER[pipe] = HSTPIPIER_PFREEZES;
-      add_evt(20);
-
-      // hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_RXINI | USBHS_HSTPIPISR_SHORTPACKETI);
-      USB_REG->HSTPIPICR[pipe] = HSTPIPICR_RXINIC | HSTPIPICR_SHORTPACKETIC;
-
-      /* In case of low USB speed and with a high CPU frequency,
-       * a ACK from host can be always running on USB line
-       * then wait end of ACK on IN pipe.
-       */
-      // if (!hri_usbhs_read_HSTPIPINRQ_reg(drv->hw, pi)) {
-      // 	while (!hri_usbhs_get_HSTPIPIMR_reg(drv->hw, pi, USBHS_HSTPIPIMR_PFREEZE)) {
-      // 	}
-      // }
-      if (!(USB_REG->HSTPIPINRQ[pipe]))
-      {
-        while (!(USB_REG->HSTPIPIMR[pipe] & HSTPIPIMR_PFREEZE))
-        {
-        }
-      }
-
-      // _usb_h_in(p);
-      if (pipe_xfers[pipe].total)
-      {
-        add_evt(21);
-        // /* Read byte count */
-        // n_rx = hri_usbhs_read_HSTPIPISR_PBYCT_bf(drv->hw, pi);
-        uint16_t rx = (USB_REG->HSTPIPISR[pipe] & USBHS_HSTPIPISR_PBYCT_Msk) >> USBHS_HSTPIPISR_PBYCT_Pos;
-        volatile uint8_t *src = EP_GET_FIFO_PTR(pipe, 8);
-        volatile uint8_t *dst = pipe_xfers[pipe].buffer + pipe_xfers[pipe].processed;
-        for (size_t i = 0; i < rx; i++)
-        {
-          *dst++ = *src++;
-        }
-
-        USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_FIFOCONC;
-
-        pipe_xfers[pipe].processed += rx;
-
-        if (pipe_xfers[pipe].processed >= pipe_xfers[pipe].total)
-        {
-          add_evt(2300);
-          hcd_event_xfer_complete(address, endpoint, pipe_xfers[pipe].processed, XFER_RESULT_SUCCESS, true);
-          add_evt(2301);
-        }
-        else
-        {
-          USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_PFREEZEC;
-        }
-      }
-      else
-      {
-        // Zero-length packet
-        add_evt(25);
-        // // 	hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIER_PFREEZES);
-        // USB_REG->HSTPIPIER[pipe] = HSTPIPIER_PFREEZES;
-        // // 	hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIDR_SHORTPACKETIEC | USBHS_HSTPIPIDR_RXINEC);
-        // USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_SHORTPACKETIEC | HSTPIPIDR_RXINEC;
-        // // 	hri_usbhs_write_HSTPIPINRQ_reg(drv->hw, pi, 0);
-        // USB_REG->HSTPIPINRQ[pipe] = 0;
-        USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_FIFOCONC;
-        hcd_event_xfer_complete(address, endpoint, 0, XFER_RESULT_SUCCESS, true);
-        add_evt(26);
-      }
-      return;
-    }
-
-    if (pipisr & HSTPIPISR_TXOUTI)
-    {
-      add_evt(30);
-      // hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIER_PFREEZES);
-      USB_REG->HSTPIPIER[pipe] = HSTPIPIER_PFREEZES;
-      // hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXOUTI);
-      USB_REG->HSTPIPICR[pipe] = HSTPIPICR_TXOUTIC;
-      // hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXOUTI);
-      USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_TXOUTEC;
-
-      hcd_event_xfer_complete(address, endpoint, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
-      add_evt(31);
-      return;
-    }
-
-    add_evt(pipisr);
+    hw_handle_pipe_int(rhport, isr);
+    return;
   }
 
   /* DMA interrupts */
   if (isr & HSTISR_DMA_)
   {
-    add_evt(1000);
-
-    //     int8_t              pi  = 7 - __CLZ(isr & imr & USBHS_HSTISR_DMA__Msk);
-    uint8_t pipe = 7 - __CLZ(isr & USBHS_HSTISR_DMA__Msk);
-
-    uint8_t address = hw_pipe_get_dev_addr(rhport, pipe);
-    uint8_t endpoint = hw_pipe_get_ep_addr(rhport, pipe);
-    //     struct _usb_h_prvt *pd = (struct _usb_h_prvt *)drv->prvt;
-    //     struct usb_h_pipe * p;
-    //     uint32_t            imr = hri_usbhs_read_HSTIMR_reg(drv->hw);
-
-    //     uint32_t dmastat;
-    //     uint8_t *buffer;
-    //     uint32_t size, count;
-    //     uint32_t n_remain;
-    //     if (pi < 0) {
-    //         return;
-    //     }
-
-    //     dmastat = hri_usbhs_read_HSTDMASTATUS_reg(drv->hw, pi - 1);
-    uint32_t stat = USB_REG->HSTDMA[pipe - 1].HSTDMASTATUS;
-    //     if (dmastat & USBHS_HSTDMASTATUS_CHANN_ENB) {
-    //         return; /* Ignore EOT_STA interrupt */
-    //     }
-    if (stat & HSTDMASTATUS_CHANN_ENB)
-    {
-      add_evt(1001);
-      return;
-    }
-
-    //     p = &pd->pipe_pool[pi];
-    // #if _HPL_USB_H_HBW_SP
-    //     if (p->high_bw_out) {
-    //         /* Streaming out, no ACK, assume everything sent */
-    //         _usb_h_ll_dma_out(p, _usb_h_ll_get(pi, p->bank));
-    //         return;
-    //     }
-    // #endif
-
-    if (pipe == 2)
-    {
-      breakpoint();
-    }
-
-    toggle_trigger();
-
-    //     /* Save number of data no transfered */
-    //     n_remain = (dmastat & USBHS_HSTDMASTATUS_BUFF_COUNT_Msk) >> USBHS_HSTDMASTATUS_BUFF_COUNT_Pos;
-    uint16_t remaining = (stat & HSTDMASTATUS_BUFF_COUNT) >> HSTDMASTATUS_BUFF_COUNT_Pos;
-    pipe_xfers[pipe].processed -= remaining;
-
-    if (pipe_xfers[pipe].processed >= pipe_xfers[pipe].total)
-    {
-      add_evt(1010);
-      pipe_xfers[pipe].buffer = 0;
-      hcd_event_xfer_complete(address, endpoint, pipe_xfers[pipe].processed, XFER_RESULT_SUCCESS, true);
-      add_evt(1011);
-    }
-    // else
-    // {
-    // 	hw_pipe_setup_dma(rhport, pipe, remaining);
-    // }
-
-    //     if (n_remain) {
-    //         _usb_h_load_x_param(p, &buffer, &size, &count);
-    //         (void)buffer;
-    //         (void)size;
-    //         /* Transfer no complete (short packet or ZLP) then:
-    //         * Update number of transfered data
-    //         */
-    //         count -= n_remain;
-    //         _usb_h_save_x_param(p, count);
-    //     }
-
-    //     /* Pipe IN: freeze status may delayed */
-    //     if (p->ep & 0x80) {
-    //         if (!hri_usbhs_get_HSTPIPIMR_reg(drv->hw, pi, USBHS_HSTPIPIMR_PFREEZE)) {
-    //             /* Pipe is not frozen in case of :
-    //             * - incomplete transfer when the request number INRQ is not
-    //             *   complete.
-    //             * - low USB speed and with a high CPU frequency,
-    //             *   a ACK from host can be always running on USB line.
-    //             */
-    //             if (n_remain) {
-    //                 /* Freeze pipe in case of incomplete transfer */
-    //                 hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIMR_PFREEZE);
-    //             } else {
-    //                 /* Wait freeze in case of ACK on going */
-    //                 while (!hri_usbhs_get_HSTPIPIMR_reg(drv->hw, pi, USBHS_HSTPIPIMR_PFREEZE)) {
-    //                 }
-    //             }
-    //         }
-    //     }
-    //     _usb_h_dma(p, (bool)n_remain);
-
-    return;
+    hw_handle_dma_int(rhport, isr);
   }
 
   add_evt(isr);
