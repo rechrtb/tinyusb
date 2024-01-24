@@ -30,7 +30,9 @@
 
 #include <stdint.h>
 
+#include "common/tusb_types.h"
 #include "common/tusb_common.h"
+#include "common_usb_regs.h"
 
 #define EP_GET_FIFO_PTR(ep, scale) (((TU_XSTRCAT(TU_STRCAT(uint, scale),_t) (*)[0x8000 / ((scale) / 8)])FIFO_RAM_ADDR)[(ep)])
 
@@ -47,7 +49,7 @@ TU_ATTR_ALWAYS_INLINE static inline void hw_exit_critical(volatile uint32_t *ato
 	__set_PRIMASK(*atomic);
 }
 
-TU_ATTR_ALWAYS_INLINE static inline void CleanInValidateCache(uint32_t *addr, int32_t size)
+TU_ATTR_ALWAYS_INLINE static inline void hw_cache_invalidate(uint32_t *addr, int32_t size)
 {
   if (SCB->CCR & SCB_CCR_DC_Msk)
   {
@@ -58,6 +60,20 @@ TU_ATTR_ALWAYS_INLINE static inline void CleanInValidateCache(uint32_t *addr, in
     __DSB();
     __ISB();
   }
+}
+
+TU_ATTR_ALWAYS_INLINE static inline tusb_speed_t hw_port_speed_get(void)
+{
+  switch (USB_REG->SR & SR_SPEED)
+  {
+  case SR_SPEED_FULL_SPEED:
+  default:
+    return TUSB_SPEED_FULL;
+  case SR_SPEED_HIGH_SPEED:
+    return TUSB_SPEED_HIGH;
+  case SR_SPEED_LOW_SPEED:
+    return TUSB_SPEED_LOW;
+  };
 }
 
 #endif

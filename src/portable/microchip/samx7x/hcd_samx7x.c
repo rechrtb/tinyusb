@@ -804,25 +804,11 @@ bool hcd_port_connect_status(uint8_t rhport)
 
 tusb_speed_t hcd_port_speed_get(uint8_t rhport)
 {
-  add_evt(9);
-  switch (USB_REG->SR & SR_SPEED)
-  {
-  case SR_SPEED_FULL_SPEED:
-  default:
-    return TUSB_SPEED_FULL;
-  case SR_SPEED_HIGH_SPEED:
-    return TUSB_SPEED_HIGH;
-  case SR_SPEED_LOW_SPEED:
-    return TUSB_SPEED_LOW;
-  }
+  return hw_port_speed_get();
 }
 
 uint32_t hcd_frame_number(uint8_t rhport)
 {
-  // if (evti > 200)
-  // {
-  // 	add_evt(10);
-  // }
   return (USB_REG->HSTFNUM & HSTFNUM_FNUM) >> HSTFNUM_FNUM_Pos;
 }
 
@@ -933,7 +919,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 
   if (pipe_xfers[pipe].dma)
   {
-    CleanInValidateCache((uint32_t *)tu_align((uint32_t)buffer, 4), total + 31);
+    hw_cache_invalidate((uint32_t *)tu_align((uint32_t)buffer, 4), total + 31);
     // pipe->periodic_start = (!dir) && (iso_pipe || int_pipe);
 
     //_usb_h_dma(pipe, false);
@@ -1037,9 +1023,7 @@ static void hw_handle_rh_int(uint8_t rhport, uint32_t isr)
 
 void hcd_int_handler(uint8_t rhport)
 {
-  add_evt(1);
-
-  volatile uint32_t isr = USB_REG->HSTISR;
+  uint32_t isr = USB_REG->HSTISR;
 
   // Change to low power mode to only use the 48 MHz clock on LS
   if (hcd_port_speed_get(rhport) == TUSB_SPEED_LOW)
@@ -1070,8 +1054,6 @@ void hcd_int_handler(uint8_t rhport)
     hw_handle_rh_int(rhport, isr);
     return;
   }
-
-  add_evt(isr);
 }
 
 #endif
