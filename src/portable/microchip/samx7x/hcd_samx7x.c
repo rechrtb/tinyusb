@@ -662,7 +662,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 	{
 		if (type == TUSB_XFER_BULK && dir == TUSB_DIR_OUT && interval < 1)
 		{
-			interval = 1;
+			interval = 0;
 		}
 	}
 	cfg |= (HSTPIPCFG_INTFRQ & ((uint32_t)interval << HSTPIPCFG_INTFRQ_Pos));
