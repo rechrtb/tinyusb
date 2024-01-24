@@ -3,7 +3,7 @@
 *
 * Copyright (c) 2018, hathach (tinyusb.org)
 * Copyright (c) 2021, HiFiPhile
-* Copyright (c) 2023, rechrtb
+* Copyright (c) 2024, Duet3D
 *
 * Permission is hereby granted, free of charge, to any person obtaining a copy
 * of this software and associated documentation files (the "Software"), to deal
@@ -33,9 +33,9 @@
 #include "host/hcd.h"
 #include "sam.h"
 #include "common_usb_regs.h"
+#include "common_usb_defs.h"
 
 #define DEBUG 1
-
 
 
 #if DEBUG
@@ -76,8 +76,6 @@ static inline void add_evt(uint32_t num)
 
 static bool ready = false;
 
-#define EP_GET_FIFO_PTR(ep, scale) (((TU_XSTRCAT(TU_STRCAT(uint, scale),_t) (*)[0x8000 / ((scale) / 8)])FIFO_RAM_ADDR)[(ep)])
-
 typedef struct 
 {
 	uint8_t *buf;
@@ -85,32 +83,6 @@ typedef struct
 	uint16_t proclen;
 	bool dma;
 } hw_pipe_t;
-
-static inline void hw_enter_critical(volatile uint32_t *atomic)
-{
-	*atomic = __get_PRIMASK();
-	__disable_irq();
-	__DMB();
-}
-
-static inline void hw_exit_critical(volatile uint32_t *atomic)
-{
-	__DMB();
-	__set_PRIMASK(*atomic);
-}
-
-TU_ATTR_ALWAYS_INLINE static inline void CleanInValidateCache(uint32_t *addr, int32_t size)
-{
-  if (SCB->CCR & SCB_CCR_DC_Msk)
-  {
-    SCB_CleanInvalidateDCache_by_Addr(addr, size);
-  }
-  else
-  {
-    __DSB();
-    __ISB();
-  }
-}
 
 static hw_pipe_t pipes[EP_MAX];
 
