@@ -86,7 +86,6 @@ typedef struct
 
 static hw_pipe_t pipes[EP_MAX];
 
-static const uint16_t psize_2_size[] = {8, 16, 32, 64, 128, 256, 512, 1024};
 
 static inline uint8_t hw_pipe_get_endpoint(uint8_t rhport, uint8_t pipe)
 {
@@ -180,8 +179,9 @@ static void hw_pipe_abort(uint8_t rhport, uint8_t pipe)
 	USB_REG->HSTPIPIDR[pipe] = HSTPIPIMR_RXINE | HSTPIPIMR_TXOUTE | HSTPIPIMR_CTRL_TXSTPE | HSTPIPIMR_BLK_RXSTALLDE | HSTPIPIMR_SHORTPACKETIE;
 }
 
-static uint16_t compute_psize(uint16_t size)
+static uint16_t hw_compute_psize(uint16_t size)
 {
+	static const uint16_t psize_2_size[] = {8, 16, 32, 64, 128, 256, 512, 1024};
 	uint8_t i;
 	for (i = 0; i < sizeof(psize_2_size) / sizeof(uint16_t); i++) {
 		/* Size should be exactly PSIZE values */
@@ -345,7 +345,7 @@ static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
     // _usb_h_load_x_param(pipe, &buf, &size, &count);
 
     uint8_t endpoint = hw_pipe_get_endpoint(rhport, pipe);
-    uint16_t max_size  = psize_2_size[(USB_REG->HSTPIPCFG[pipe] & HSTPIPCFG_PSIZE) >> HSTPIPCFG_PSIZE_Pos];
+    uint16_t max_size  = 1 << (((USB_REG->HSTPIPCFG[pipe] & HSTPIPCFG_PSIZE) >> HSTPIPCFG_PSIZE_Pos) + 3);
 
 	uint32_t nextlen = pipes[pipe].buflen - pipes[pipe].proclen;
 	uint32_t maxlen = 0x10000;
@@ -651,7 +651,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 	cfg |= (HSTPIPCFG_PEPNUM & ((uint32_t)(ep_desc->bEndpointAddress & 0xF) << HSTPIPCFG_PEPNUM_Pos));
 
 	uint16_t size = ep_desc->wMaxPacketSize & 0x3FF;
-	cfg |= (HSTPIPCFG_PSIZE & ((uint32_t)compute_psize(size) << HSTPIPCFG_PSIZE_Pos));
+	cfg |= (HSTPIPCFG_PSIZE & ((uint32_t)hw_compute_psize(size) << HSTPIPCFG_PSIZE_Pos));
 
 	uint8_t bank = ((size >> 11) & 0x3) + 1;
 	cfg |= (HSTPIPCFG_PBK & ((uint32_t)(bank - 1) << HSTPIPCFG_PBK_Pos));

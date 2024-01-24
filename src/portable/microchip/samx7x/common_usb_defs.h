@@ -34,20 +34,20 @@
 
 #define EP_GET_FIFO_PTR(ep, scale) (((TU_XSTRCAT(TU_STRCAT(uint, scale),_t) (*)[0x8000 / ((scale) / 8)])FIFO_RAM_ADDR)[(ep)])
 
-TU_ATTR_ALWAYS_INLINE static void hw_enter_critical(volatile uint32_t *atomic)
+TU_ATTR_ALWAYS_INLINE static inline void hw_enter_critical(volatile uint32_t *atomic)
 {
 	*atomic = __get_PRIMASK();
 	__disable_irq();
 	__DMB();
 }
 
-TU_ATTR_ALWAYS_INLINE static void hw_exit_critical(volatile uint32_t *atomic)
+TU_ATTR_ALWAYS_INLINE static inline void hw_exit_critical(volatile uint32_t *atomic)
 {
 	__DMB();
 	__set_PRIMASK(*atomic);
 }
 
-TU_ATTR_ALWAYS_INLINE static void CleanInValidateCache(uint32_t *addr, int32_t size)
+TU_ATTR_ALWAYS_INLINE static inline void CleanInValidateCache(uint32_t *addr, int32_t size)
 {
   if (SCB->CCR & SCB_CCR_DC_Msk)
   {
