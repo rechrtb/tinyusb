@@ -967,33 +967,24 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 
 static void hw_handle_rh_int(uint8_t rhport, uint32_t isr)
 {
-  if (isr & HSTISR_HWUPI)
+  if (isr & HSTISR_RSTI)
   {
     USB_REG->CTRL &= ~CTRL_FRZCLK;
     while (!(USB_REG->SR & SR_CLKUSABLE))
       ;
-
-    // Disable HWUPI interrupt
-    USB_REG->HSTIDR |= HSTIDR_HWUPIEC;
-
-    // Enable VBUS
-    USB_REG->SFR |= SFR_VBUSRQS;
-
-    USB_REG->HSTICR |= HSTICR_HWUPIC;
-    USB_REG->HSTIDR |= HSTIDR_HWUPIEC;
-
-    // Enable connect interrupt
-    USB_REG->HSTIER |= HSTIER_DCONNIES;
-
+    USB_REG->HSTICR |= HSTICR_RSTIC;
+    USB_REG->HSTIDR |= HSTIDR_RSTIEC;
+    ready = true;
     return;
+  }
+
+  if (isr & HSTISR_DDISCI)
+  {
+    // TODO
   }
 
   if (isr & HSTISR_DCONNI)
   {
-    USB_REG->CTRL &= ~CTRL_FRZCLK;
-    while (!(USB_REG->SR & SR_CLKUSABLE))
-      ;
-
     USB_REG->HSTICR |= HSTICR_DCONNIC;
     USB_REG->HSTIDR |= HSTISR_DCONNI;
 
@@ -1009,14 +1000,23 @@ static void hw_handle_rh_int(uint8_t rhport, uint32_t isr)
     return;
   }
 
-  if (isr & HSTISR_RSTI)
+  if (isr & HSTISR_HWUPI)
   {
     USB_REG->CTRL &= ~CTRL_FRZCLK;
-    while (!(USB_REG->SR & SR_CLKUSABLE))
-      ;
-    USB_REG->HSTICR |= HSTICR_RSTIC;
-    USB_REG->HSTIDR |= HSTIDR_RSTIEC;
-    ready = true;
+    while (!(USB_REG->SR & SR_CLKUSABLE));
+
+    // Disable HWUPI interrupt
+    USB_REG->HSTIDR |= HSTIDR_HWUPIEC;
+
+    // Enable VBUS
+    USB_REG->SFR |= SFR_VBUSRQS;
+
+    USB_REG->HSTICR |= HSTICR_HWUPIC;
+    USB_REG->HSTIDR |= HSTIDR_HWUPIEC;
+
+    // Enable connect interrupt
+    USB_REG->HSTIER |= HSTIER_DCONNIES;
+
     return;
   }
 }
