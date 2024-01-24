@@ -979,22 +979,8 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
   return true;
 }
 
-void hcd_int_handler(uint8_t rhport)
+static void hw_handle_rh_int(uint8_t rhport, uint32_t isr)
 {
-  add_evt(1);
-
-  volatile uint32_t isr = USB_REG->HSTISR;
-
-  /* Low speed, switch to low power mode to use 48MHz clock */
-  // TODO: check handling transition from low speed -> high speed
-  if (hcd_port_speed_get(rhport) == TUSB_SPEED_LOW)
-  {
-    if (!(USB_REG->HSTCTRL & USBHS_HSTCTRL_SPDCONF_Msk))
-    {
-      USB_REG->HSTCTRL |= HSTCTRL_SPDCONF_LOW_POWER;
-    }
-  }
-
   if (isr & HSTISR_HWUPI)
   {
     USB_REG->CTRL &= ~CTRL_FRZCLK;
@@ -1047,17 +1033,42 @@ void hcd_int_handler(uint8_t rhport)
     ready = true;
     return;
   }
+}
 
+void hcd_int_handler(uint8_t rhport)
+{
+  add_evt(1);
+
+  volatile uint32_t isr = USB_REG->HSTISR;
+
+  // Change to low power mode to only use the 48 MHz clock on LS
+  if (hcd_port_speed_get(rhport) == TUSB_SPEED_LOW)
+  {
+    if (!(USB_REG->HSTCTRL & USBHS_HSTCTRL_SPDCONF_Msk))
+    {
+      USB_REG->HSTCTRL |= HSTCTRL_SPDCONF_LOW_POWER;
+    }
+  }
+
+  // Pipe processing & exception interrupts
   if (isr & HSTISR_PEP_)
   {
     hw_handle_pipe_int(rhport, isr);
     return;
   }
 
-  /* DMA interrupts */
+  // DMA processing interrupts
   if (isr & HSTISR_DMA_)
   {
     hw_handle_dma_int(rhport, isr);
+    return;
+  }
+
+  // Host global (root hub) processing interrupts
+  if (isr & (HSTISR_RSTI | HSTISR_DCONNI | HSTISR_DDISCI | HSTISR_HWUPI | HSTISR_RXRSMI))
+  {
+    hw_handle_rh_int(rhport, isr);
+    return;
   }
 
   add_evt(isr);
