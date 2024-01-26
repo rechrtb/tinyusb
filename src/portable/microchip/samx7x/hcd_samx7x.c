@@ -106,6 +106,13 @@ static inline void hw_pipe_clear_reg(uint8_t rhport, uint8_t pipe, uint32_t mask
   (void) rhport;
   USB_REG->HSTPIPICR[pipe] = mask;
 }
+
+static inline void hw_pipe_enable_reg(uint8_t rhport, uint8_t pipe, uint32_t mask)
+{
+  (void) rhport;
+  USB_REG->HSTPIPIER[pipe] = mask;
+}
+
 static inline uint8_t hw_pipe_get_ep_addr(uint8_t rhport, uint8_t pipe)
 {
   (void)rhport;
@@ -248,7 +255,7 @@ static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
   {
     add_evt(88);
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_RXSTALLDIC);
-    USB_REG->HSTPIPIER[pipe] = HSTPIPIER_RSTDTS;
+    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_RSTDTS);
     hw_pipe_abort(rhport, pipe);
     hcd_event_xfer_complete(address, endpoint, 0, XFER_RESULT_STALLED, true);
     return;
@@ -266,7 +273,7 @@ static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
   if (pipisr & HSTPIPISR_CTRL_TXSTPI)
   {
     add_evt(10);
-    USB_REG->HSTPIPIER[pipe] = HSTPIPIER_PFREEZES;
+    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
     // hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXSTPI);
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_TXSTPIC);
     // hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXSTPI);
@@ -279,7 +286,7 @@ static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
   /* RXIN: Full packet received */
   if (pipisr & HSTPIPISR_RXINI || pipisr & HSTPIPISR_SHORTPACKETI)
   {
-    USB_REG->HSTPIPIER[pipe] = HSTPIPIER_PFREEZES;
+    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
     add_evt(20);
 
     // hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_RXINI | USBHS_HSTPIPISR_SHORTPACKETI);
@@ -334,7 +341,7 @@ static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
       // Zero-length packet
       add_evt(25);
       // // 	hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIER_PFREEZES);
-      // USB_REG->HSTPIPIER[pipe] = HSTPIPIER_PFREEZES;
+      // hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
       // // 	hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIDR_SHORTPACKETIEC | USBHS_HSTPIPIDR_RXINEC);
       // USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_SHORTPACKETIEC | HSTPIPIDR_RXINEC;
       // // 	hri_usbhs_write_HSTPIPINRQ_reg(drv->hw, pi, 0);
@@ -350,7 +357,7 @@ static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
   {
     add_evt(30);
     // hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIER_PFREEZES);
-    USB_REG->HSTPIPIER[pipe] = HSTPIPIER_PFREEZES;
+    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
     // hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXOUTI);
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
     // hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXOUTI);
@@ -817,7 +824,7 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   {
     *dst++ = *src++;
   }
-  USB_REG->HSTPIPIER[pipe] = HSTPIPIER_CTRL_TXSTPES;
+  hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_CTRL_TXSTPES);
   USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_FIFOCONC | HSTPIPIDR_PFREEZEC;
   return true;
 }
@@ -946,7 +953,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 
     // configure pipe-related interrupts
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_RXSTALLDIC | HSTPIPICR_OVERFIC | HSTPIPISR_PERRI | HSTPIPICR_INTRPT_UNDERFIC);
-    USB_REG->HSTPIPIER[pipe] = HSTPIPIER_CTRL_RXSTALLDES | HSTPIPIER_OVERFIES | HSTPIPIER_PERRES;
+    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_CTRL_RXSTALLDES | HSTPIPIER_OVERFIES | HSTPIPIER_PERRES);
     USB_REG->HSTIER |= (HSTISR_PEP_0 | (HSTISR_DMA_0 >> 1)) << pipe;
 
     pipe_xfers[pipe].dma = dma;
@@ -992,7 +999,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
       // hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_RXINI | USBHS_HSTPIPISR_SHORTPACKETI);
       hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_RXINIC | HSTPIPICR_SHORTPACKETIC);
       // hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIER_RXINES);
-      USB_REG->HSTPIPIER[pipe] = HSTPIPIER_RXINES;
+      hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_RXINES);
       USB_REG->HSTPIPINRQ[pipe] = 0;
       USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_PFREEZEC;
       add_evt(201);
@@ -1012,7 +1019,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
       // hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXOUTI);
       hw_pipe_clear_reg(rhport, pipe, HSTPIPISR_TXOUTI);
       // hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIMR_TXOUTE);
-      USB_REG->HSTPIPIER[pipe] = HSTPIPIER_TXOUTES;
+      hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_TXOUTES);
       // hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIMR_FIFOCON | USBHS_HSTPIPIMR_PFREEZE);
       USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_FIFOCONC | HSTPIPIDR_PFREEZEC;
     }
