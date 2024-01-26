@@ -738,35 +738,22 @@ static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
 
 bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet[8])
 {
-  add_evt(6);
-
   uint8_t pipe = 0;
   pipe = hw_pipe_find(rhport, dev_addr, 0);
   if (pipe >= EP_MAX)
   {
     return false;
   }
-
-  // hri_usbhs_write_HSTPIPCFG_PTOKEN_bf(drv->hw, pi, USBHS_HSTPIPCFG_PTOKEN_SETUP_Val);
   hw_pipe_set_token(rhport, pipe, HSTPIPCFG_PTOKEN_SETUP);
-  // hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXSTPI);
   USB_REG->HSTPIPICR[pipe] = HSTPIPICR_CTRL_TXSTPIC;
-  // for (i = 0; i < 8; i++) {
-  // 	*dst8++ = *src8++;
-  // }
   const uint8_t *src = setup_packet;
   uint8_t *dst = EP_GET_FIFO_PTR(pipe, 8);
   for (size_t i = 0; i < 8; i++)
   {
     *dst++ = *src++;
   }
-  // hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIMR_TXSTPE);
   USB_REG->HSTPIPIER[pipe] = HSTPIPIER_CTRL_TXSTPES;
-  // hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIMR_FIFOCON | USBHS_HSTPIPIMR_PFREEZE);
   USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_FIFOCONC | HSTPIPIDR_PFREEZEC;
-
-  add_evt(100);
-
   return true;
 }
 
@@ -862,11 +849,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
   uint16_t size = ep_desc->wMaxPacketSize & (PIPE_MAX_PACKET_SIZE - 1); // mask with max packet size the
   cfg |= (HSTPIPCFG_PSIZE & ((uint32_t)hw_compute_psize(size) << HSTPIPCFG_PSIZE_Pos)); // hardware supports
 
-
-  cfg |= HSTPIPCFG_ALLOC;
-
   USB_REG->HSTPIP |= USBHS_HSTPIP_PEN0 << pipe;
-  USB_REG->HSTPIPCFG[pipe] = cfg;
   cfg |= HSTPIPCFG_PBK_1_BANK;
 #if USE_DUAL_BANK
   if (type == TUSB_XFER_ISOCHRONOUS || type == TUSB_XFER_BULK)
@@ -875,16 +858,19 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
   }
 #endif
 
-  bool use_dma = EP_DMA_SUPPORT(pipe) && type != TUSB_XFER_CONTROL;
+  bool dma = EP_DMA_SUPPORT(pipe) && type != TUSB_XFER_CONTROL;
 
-  if (use_dma)
+  if (dma)
   {
-    // /* Start DMA */
-    // hri_usbhs_set_HSTPIPCFG_AUTOSW_bit(pipe->hcd->hw, pi);
-    USB_REG->HSTPIPCFG[pipe] |= HSTPIPCFG_AUTOSW;
+    cfg |= HSTPIPCFG_AUTOSW; // needed for dma
   }
 
-  if (USB_REG->HSTPIPISR[pipe] & HSTPIPISR_CFGOK) // check if config is correct
+  cfg |= HSTPIPCFG_ALLOC; // alloc dpram for pipe
+
+  USB_REG->HSTPIP |= USBHS_HSTPIP_PEN0 << pipe;
+  USB_REG->HSTPIPCFG[pipe] = cfg; // write prepared configuration
+
+  if (USB_REG->HSTPIPISR[pipe] & HSTPIPISR_CFGOK) // check if pipe enabling succeeded with ok configuration
   {
     // setup device address for pipe
     uint8_t reg_i = pipe >> 2;
@@ -899,7 +885,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
     USB_REG->HSTPIPIER[pipe] = HSTPIPIER_CTRL_RXSTALLDES | HSTPIPIER_OVERFIES | HSTPIPIER_PERRES;
     USB_REG->HSTIER |= (HSTISR_PEP_0 | (HSTISR_DMA_0 >> 1)) << pipe;
 
-    pipe_xfers[pipe].dma = use_dma;
+    pipe_xfers[pipe].dma = dma;
 
     return true;
   }
@@ -908,7 +894,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
   return false;
 }
 
-bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *buffer, uint16_t total)
+bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *buffer, uint16_t buflen)
 {
   add_evt(2);
 
@@ -920,12 +906,12 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
   }
 
   pipe_xfers[pipe].buffer = buffer;
-  pipe_xfers[pipe].total = total;
+  pipe_xfers[pipe].total = buflen;
   pipe_xfers[pipe].processed = 0;
 
   if (pipe_xfers[pipe].dma)
   {
-    hw_cache_invalidate((uint32_t *)tu_align((uint32_t)buffer, 4), total + 31);
+    hw_cache_invalidate((uint32_t *)tu_align((uint32_t)buffer, 4), buflen + 31);
     // pipe->periodic_start = (!dir) && (iso_pipe || int_pipe);
 
     //_usb_h_dma(pipe, false);
@@ -953,7 +939,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 
       volatile uint8_t *dst = EP_GET_FIFO_PTR(pipe, 8);
       volatile uint8_t *src = buffer;
-      for (size_t i = 0; i < total; i++)
+      for (size_t i = 0; i < buflen; i++)
       {
         *dst++ = *src++;
       }
