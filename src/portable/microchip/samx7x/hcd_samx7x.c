@@ -107,6 +107,12 @@ static inline void hw_pipe_clear_reg(uint8_t rhport, uint8_t pipe, uint32_t mask
   USB_REG->HSTPIPICR[pipe] = mask;
 }
 
+static inline void hw_pipe_disable_reg(uint8_t rhport, uint8_t pipe, uint32_t mask)
+{
+  (void) rhport;
+  USB_REG->HSTPIPIDR[pipe] = mask;
+}
+
 static inline void hw_pipe_enable_reg(uint8_t rhport, uint8_t pipe, uint32_t mask)
 {
   (void) rhport;
@@ -221,9 +227,8 @@ static void hw_pipe_abort(uint8_t rhport, uint8_t pipe)
   // 							USBHS_HSTPIPIMR_RXINE | USBHS_HSTPIPIMR_TXOUTE | USBHS_HSTPIPIMR_TXSTPE
   // 								| USBHS_HSTPIPIMR_RXSTALLDE | USBHS_HSTPIPIMR_SHORTPACKETIE);
 
-  USB_REG->HSTPIPIDR[pipe] = HSTPIPIMR_RXINE | HSTPIPIMR_TXOUTE |
-                             HSTPIPIMR_CTRL_TXSTPE | HSTPIPIMR_BLK_RXSTALLDE |
-                             HSTPIPIMR_SHORTPACKETIE;
+  hw_pipe_disable_reg(rhport, pipe, HSTPIPIMR_RXINE | HSTPIPIMR_TXOUTE |
+    HSTPIPIMR_CTRL_TXSTPE | HSTPIPIMR_BLK_RXSTALLDE | HSTPIPIMR_SHORTPACKETIE);
 }
 
 static uint16_t hw_compute_psize(uint16_t size)
@@ -277,7 +282,7 @@ static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
     // hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXSTPI);
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_TXSTPIC);
     // hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXSTPI);
-    USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_CTRL_TXSTPEC;
+    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_CTRL_TXSTPEC);
     hcd_event_xfer_complete(address, endpoint, 8, XFER_RESULT_SUCCESS, true);
     add_evt(11);
     return;
@@ -321,7 +326,7 @@ static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
         *dst++ = *src++;
       }
 
-      USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_FIFOCONC;
+      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
 
       pipe_xfers[pipe].processed += rx;
 
@@ -333,7 +338,7 @@ static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
       }
       else
       {
-        USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_PFREEZEC;
+        hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
       }
     }
     else
@@ -343,10 +348,10 @@ static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
       // // 	hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIER_PFREEZES);
       // hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
       // // 	hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIDR_SHORTPACKETIEC | USBHS_HSTPIPIDR_RXINEC);
-      // USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_SHORTPACKETIEC | HSTPIPIDR_RXINEC;
+      // hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_SHORTPACKETIEC | HSTPIPIDR_RXINEC);
       // // 	hri_usbhs_write_HSTPIPINRQ_reg(drv->hw, pi, 0);
       // USB_REG->HSTPIPINRQ[pipe] = 0;
-      USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_FIFOCONC;
+      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
       hcd_event_xfer_complete(address, endpoint, 0, XFER_RESULT_SUCCESS, true);
       add_evt(26);
     }
@@ -361,7 +366,7 @@ static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
     // hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXOUTI);
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
     // hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXOUTI);
-    USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_TXOUTEC;
+    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_TXOUTEC);
 
     hcd_event_xfer_complete(address, endpoint, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
     add_evt(31);
@@ -541,7 +546,7 @@ static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
       add_evt(10003);
     }
     add_evt(10004);
-    USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_NBUSYBKEC | HSTPIPIDR_PFREEZEC;
+    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC | HSTPIPIDR_PFREEZEC);
     add_evt(10005);
     pipe_xfers[pipe].processed += nextlen;
     USB_REG->HSTDMA[pipe - 1].HSTDMACONTROL = dma_ctrl;
@@ -825,7 +830,7 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
     *dst++ = *src++;
   }
   hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_CTRL_TXSTPES);
-  USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_FIFOCONC | HSTPIPIDR_PFREEZEC;
+  hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC | HSTPIPIDR_PFREEZEC);
   return true;
 }
 
@@ -1001,7 +1006,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
       // hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIER_RXINES);
       hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_RXINES);
       USB_REG->HSTPIPINRQ[pipe] = 0;
-      USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_PFREEZEC;
+      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
       add_evt(201);
     }
     else
@@ -1021,7 +1026,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
       // hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIMR_TXOUTE);
       hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_TXOUTES);
       // hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIMR_FIFOCON | USBHS_HSTPIPIMR_PFREEZE);
-      USB_REG->HSTPIPIDR[pipe] = HSTPIPIDR_FIFOCONC | HSTPIPIDR_PFREEZEC;
+      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC | HSTPIPIDR_PFREEZEC);
     }
   }
 
