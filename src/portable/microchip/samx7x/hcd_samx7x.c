@@ -808,7 +808,7 @@ void hcd_device_close(uint8_t rhport, uint8_t dev_addr)
     if (hw_pipe_enabled(rhport, i) && hw_pipe_get_dev_addr(rhport, i) == dev_addr)
     {
       hw_pipe_reset(rhport, i);
-      USB_REG->HSTPIP &= ~(((1 << i) << HSTPIP_PEN_Pos) & HSTPIP_PEN); // disable pipe
+      hw_pipe_enable(rhport, i, false);
     }
   }
 }
