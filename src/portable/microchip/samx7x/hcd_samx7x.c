@@ -98,7 +98,7 @@ static hw_pipe_xfer_t pipe_xfers[EP_MAX];
 static inline bool hw_pipe_enabled(uint8_t rhport, uint8_t pipe)
 {
   (void) rhport;
-  return (USB_REG->HSTPIP & (USBHS_HSTPIP_PEN0 << pipe));
+  return (USB_REG->HSTPIP & (HSTPIP_PEN0 << pipe));
 }
 
 static inline uint8_t hw_pipe_get_ep_addr(uint8_t rhport, uint8_t pipe)
@@ -166,13 +166,26 @@ static uint8_t hw_pipe_find_free(uint8_t rhport)
   return EP_MAX;
 }
 
+static inline void hw_pipe_enable(uint8_t rhport, uint8_t pipe, bool enable)
+{
+  uint32_t mask = HSTPIP_PEN0 << pipe;
+  if (enable)
+  {
+    USB_REG->HSTPIP |= mask;
+  }
+  else
+  {
+    USB_REG->HSTPIP &= ~mask;
+  }
+}
+
 static void hw_pipe_reset(uint8_t rhport, uint8_t pipe)
 {
   (void)rhport;
   memset(&pipe_xfers[pipe], 0, sizeof(pipe_xfers[pipe]));
-
-  USB_REG->HSTPIP |= ((1 << pipe) << HSTPIP_PRST_Pos) & HSTPIP_PRST;    // put pipe in reset
-  USB_REG->HSTPIP &= ~(((1 << pipe) << HSTPIP_PRST_Pos) & HSTPIP_PRST); // remove pipe from reset
+  uint32_t mask = HSTPIP_PRST0 << pipe;
+  USB_REG->HSTPIP |= mask;    // put pipe in reset
+  USB_REG->HSTPIP &= ~mask; // remove pipe from reset
 }
 
 static void hw_pipes_reset(uint8_t rhport)
@@ -215,7 +228,6 @@ static uint16_t hw_compute_psize(uint16_t size)
   }
   return 7;
 }
-
 
 static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
 {
@@ -897,7 +909,6 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
   uint16_t size = ep_desc->wMaxPacketSize & (PIPE_MAX_PACKET_SIZE - 1); // mask with max packet size the
   cfg |= (HSTPIPCFG_PSIZE & ((uint32_t)hw_compute_psize(size) << HSTPIPCFG_PSIZE_Pos)); // hardware supports
 
-  USB_REG->HSTPIP |= USBHS_HSTPIP_PEN0 << pipe;
   cfg |= HSTPIPCFG_PBK_1_BANK;
 #if USE_DUAL_BANK
   if (type == TUSB_XFER_ISOCHRONOUS || type == TUSB_XFER_BULK)
@@ -915,7 +926,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
 
   cfg |= HSTPIPCFG_ALLOC; // alloc dpram for pipe
 
-  USB_REG->HSTPIP |= USBHS_HSTPIP_PEN0 << pipe;
+  hw_pipe_enable(rhport, pipe, true);
   USB_REG->HSTPIPCFG[pipe] = cfg; // write prepared configuration
 
   if (USB_REG->HSTPIPISR[pipe] & HSTPIPISR_CFGOK) // check if pipe enabling succeeded with ok configuration
@@ -938,7 +949,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
     return true;
   }
 
-  USB_REG->HSTPIP &= ~(((1 << pipe) << HSTPIP_PEN_Pos) & HSTPIP_PEN); // disable pipe
+  hw_pipe_enable(rhport, pipe, false);
   return false;
 }
 
