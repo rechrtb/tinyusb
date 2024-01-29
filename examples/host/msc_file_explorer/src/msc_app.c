@@ -123,9 +123,12 @@ bool inquiry_complete_cb(uint8_t dev_addr, tuh_msc_complete_data_t const * cb_da
   {
     puts("mount failed");
   }
+  else
+  {
+    // change to newly mounted drive
+    f_chdir(drive_path);
+  }
 
-  // change to newly mounted drive
-  f_chdir(drive_path);
 
   // print the drive label
 //  char label[34];
