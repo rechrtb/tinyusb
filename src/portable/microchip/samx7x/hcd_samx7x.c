@@ -673,7 +673,6 @@ static void hw_handle_rh_int(uint8_t rhport, uint32_t isr)
 
 bool hcd_init(uint8_t rhport)
 {
-  add_evt(12);
   (void)rhport;
   hcd_int_disable(rhport);
 
@@ -773,7 +772,6 @@ bool hcd_init(uint8_t rhport)
 
 void hcd_device_close(uint8_t rhport, uint8_t dev_addr)
 {
-  add_evt(11);
   // Reset every pipe associated with the device
   for (uint8_t i = 0; i < EP_MAX; i++)
   {
