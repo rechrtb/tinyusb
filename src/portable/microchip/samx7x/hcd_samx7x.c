@@ -374,23 +374,6 @@ static void hw_handle_dma_int(uint8_t rhport, uint32_t isr)
 static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
 {
   uint32_t flags = 0;
-  // _usb_h_dma(pipe, false);
-  // uint8_t            pi   = _usb_h_pipe_i(pipe);
-  // uint8_t            dmai = pi - 1;
-  // struct usb_h_desc *drv  = (struct usb_h_desc *)pipe->hcd;
-  // uint16_t           mps  = psize_2_size[hri_usbhs_read_HSTPIPCFG_PSIZE_bf(drv->hw, pi)];
-  // hal_atomic_t       flags;
-  // uint8_t *          buffer;
-  // uint32_t           size, count;
-  // uint32_t           n_next, n_max;
-  // uint32_t           dma_ctrl = 0;
-  // bool               dir      = pipe->ep & 0x80;
-
-  // if (pipe->x.general.state != USB_H_PIPE_S_DATO && pipe->x.general.state != USB_H_PIPE_S_DATI) {
-  //     return; /* No DMA is running */
-  // }
-
-  // _usb_h_load_x_param(pipe, &buffer, &size, &count);
 
   uint8_t ep_addr = hw_pipe_get_ep_addr(rhport, pipe);
   uint16_t max_size = 1 << (((USB_REG->HSTPIPCFG[pipe] & HSTPIPCFG_PSIZE) >> HSTPIPCFG_PSIZE_Pos) + 3);
@@ -425,123 +408,23 @@ static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
     }
   }
 
-  add_evt(10000);
-
   USB_REG->HSTDMA[pipe - 1].HSTDMAADDRESS = (uint32_t)&pipe_xfers[pipe].buffer[pipe_xfers[pipe].processed];
   dma_ctrl |= HSTDMACONTROL_END_BUFFIT | HSTDMACONTROL_CHANN_ENB;
 
   hw_enter_critical(&flags);
-  add_evt(10001);
   if (!(USB_REG->HSTDMA[pipe - 1].HSTDMASTATUS & HSTDMASTATUS_END_TR_ST))
   {
     if (ep_addr & TUSB_DIR_IN_MASK)
     {
-      add_evt(10002);
       USB_REG->HSTPIPINRQ[pipe] = (nextlen + max_size - 1) / max_size - 1;
-      add_evt(10003);
     }
-    add_evt(10004);
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC | HSTPIPIDR_PFREEZEC);
-    add_evt(10005);
     pipe_xfers[pipe].processed += nextlen;
     USB_REG->HSTDMA[pipe - 1].HSTDMACONTROL = dma_ctrl;
-    add_evt(10006);
-    toggle_trigger();
     hw_exit_critical(&flags);
     return true;
   }
   hw_exit_critical(&flags);
-
-  // if (count < size && !end) {
-  //     /* Need to send or receive other data */
-  //     n_next = size - count;
-  //     n_max  = USBHS_DMA_TRANS_MAX;
-  //     if (dir) {
-  //         /* 256 is the maximum of IN requests via UPINRQ */
-  //         if (256L * mps < n_max) {
-  //             n_max = 256L * mps;
-  //         }
-  //     }
-  //     if (n_max < n_next) {
-  //         /* HW maximum transfer size */
-  //         n_next = n_max;
-  //     }
-  //     /* Set 0 to transfer the maximum */
-  //     dma_ctrl = USBHS_HSTDMACONTROL_BUFF_LENGTH((n_next == USBHS_DMA_TRANS_MAX) ? 0 : n_next);
-  //     if (dir) {
-  //         /* Enable short packet reception */
-  //         dma_ctrl |= USBHS_HSTDMACONTROL_END_TR_IT | USBHS_HSTDMACONTROL_END_TR_EN;
-  //     } else if ((n_next & (mps - 1)) != 0) {
-  //         /* Enable short packet option
-  //         * else the DMA transfer is accepted
-  //         * and interrupt DMA valid but nothing is sent.
-  //         */
-  //         dma_ctrl |= USBHS_HSTDMACONTROL_END_B_EN;
-  //         /* No need to request another ZLP */
-  //         pipe->zlp = 0;
-  //     }
-  //     /* Start USB DMA to fill or read FIFO of the selected ep_addr */
-  //     hri_usbhs_write_HSTDMAADDRESS_reg(drv->hw, dmai, (uint32_t)&buffer[count]);
-  //     dma_ctrl |= USBHS_HSTDMACONTROL_END_BUFFIT | USBHS_HSTDMACONTROL_CHANN_ENB;
-  //     /* Disable IRQs to have a short sequence
-  //     * between read of EOT_STA and DMA enable
-  //     */
-  //     atomic_enter_critical(&flags);
-  //     if (!hri_usbhs_get_hstdmastatus_reg(drv->hw, dmai, usbhs_hstdmastatus_end_tr_st)) {
-  //         if (dir) {
-  //             hri_usbhs_write_HSTPIPINRQ_reg(drv->hw, pi, (n_next + mps - 1) / mps - 1);
-  //         }
-  //         if (pipe->periodic_start) {
-  //             /* Still packets in FIFO, just start */
-  //             if (hri_usbhs_get_HSTPIPIMR_reg(drv->hw, pi, USBHS_HSTPIPIMR_NBUSYBKE)) {
-  //                 pipe->periodic_start = 0;
-  //                 hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIMR_NBUSYBKE);
-  //             } else {
-  //                 /* Wait SOF to start */
-  //                 _usb_h_add_sof_user(drv); /* SOF User: periodic start */
-  //             }
-  //         } else {
-  //             /* Just start */
-  //             hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIMR_NBUSYBKE | USBHS_HSTPIPIMR_PFREEZE);
-  //         }
-  //         /* Start DMA */
-  //         hri_usbhs_write_HSTDMACONTROL_reg(drv->hw, dmai, dma_ctrl);
-  //         count += n_next;
-  //         _usb_h_save_x_param(pipe, count);
-  //         atomic_leave_critical(&flags);
-  //         return;
-  //     }
-  //     atomic_leave_critical(&flags);
-  // }
-
-  // /* OUT pipe */
-  // if ((pipe->ep & 0x80) == 0) {
-  //     if (pipe->zlp) {
-  //         /* Need to send a ZLP (No possible with USB DMA)
-  //         * enable interrupt to wait a free bank to sent ZLP
-  //         */
-  //         hri_usbhs_write_HSTPIPICR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXOUTI);
-  //         if (hri_usbhs_get_HSTPIPISR_reg(drv->hw, pi, USBHS_HSTPIPISR_RWALL)) {
-  //             /* Force interrupt in case of pipe already free */
-  //             hri_usbhs_write_HSTPIPIFR_reg(drv->hw, pi, USBHS_HSTPIPISR_TXOUTI);
-  //         }
-  //         hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIMR_TXOUTE);
-  //     } else {
-  //         /* Wait that all banks are free to freeze clock of OUT ep_addr
-  //         * and call callback except ISO. */
-  //         /* For ISO out, start another DMA transfer since no ACK needed */
-  //         hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIER_NBUSYBKES);
-  //         if (pipe->type != 1) {
-  //             /* Callback on BE transfer done */
-  //             return;
-  //         }
-  //     }
-  // }
-  // /* Finish transfer */
-  // _usb_h_end_transfer(pipe, USB_H_OK);
-  // return USB_H_OK;
-  add_evt(10010);
-
   return false;
 }
 
