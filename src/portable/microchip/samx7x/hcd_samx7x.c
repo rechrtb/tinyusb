@@ -350,102 +350,25 @@ static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
 
 static void hw_handle_dma_int(uint8_t rhport, uint32_t isr)
 {
-  add_evt(1000);
-
-  //     int8_t              pi  = 7 - __CLZ(isr & imr & USBHS_HSTISR_DMA__Msk);
   uint8_t pipe = 7 - __CLZ(isr & USBHS_HSTISR_DMA__Msk);
 
   uint8_t dev_addr = hw_pipe_get_dev_addr(rhport, pipe);
   uint8_t ep_addr = hw_pipe_get_ep_addr(rhport, pipe);
-  //     struct _usb_h_prvt *pd = (struct _usb_h_prvt *)drv->prvt;
-  //     struct usb_h_pipe * p;
-  //     uint32_t            imr = hri_usbhs_read_HSTIMR_reg(drv->hw);
-
-  //     uint32_t dmastat;
-  //     uint8_t *buffer;
-  //     uint32_t size, count;
-  //     uint32_t n_remain;
-  //     if (pi < 0) {
-  //         return;
-  //     }
-
-  //     dmastat = hri_usbhs_read_HSTDMASTATUS_reg(drv->hw, pi - 1);
   uint32_t stat = USB_REG->HSTDMA[pipe - 1].HSTDMASTATUS;
-  //     if (dmastat & USBHS_HSTDMASTATUS_CHANN_ENB) {
-  //         return; /* Ignore EOT_STA interrupt */
-  //     }
+
   if (stat & HSTDMASTATUS_CHANN_ENB)
   {
-    add_evt(1001);
-    return;
+    return; // ignore EOT_STA interrupt
   }
 
-  //     p = &pd->pipe_pool[pi];
-  // #if _HPL_USB_H_HBW_SP
-  //     if (p->high_bw_out) {
-  //         /* Streaming out, no ACK, assume everything sent */
-  //         _usb_h_ll_dma_out(p, _usb_h_ll_get(pi, p->bank));
-  //         return;
-  //     }
-  // #endif
-
-  if (pipe == 2)
-  {
-    breakpoint();
-  }
-
-  toggle_trigger();
-
-  //     /* Save number of data no transfered */
-  //     n_remain = (dmastat & USBHS_HSTDMASTATUS_BUFF_COUNT_Msk) >> USBHS_HSTDMASTATUS_BUFF_COUNT_Pos;
   uint16_t remaining = (stat & HSTDMASTATUS_BUFF_COUNT) >> HSTDMASTATUS_BUFF_COUNT_Pos;
   pipe_xfers[pipe].processed -= remaining;
 
   if (pipe_xfers[pipe].processed >= pipe_xfers[pipe].total)
   {
-    add_evt(1010);
     pipe_xfers[pipe].buffer = 0;
     hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].processed, XFER_RESULT_SUCCESS, true);
-    add_evt(1011);
   }
-  // else
-  // {
-  // 	hw_pipe_setup_dma(rhport, pipe, remaining);
-  // }
-
-  //     if (n_remain) {
-  //         _usb_h_load_x_param(p, &buffer, &size, &count);
-  //         (void)buffer;
-  //         (void)size;
-  //         /* Transfer no complete (short packet or ZLP) then:
-  //         * Update number of transfered data
-  //         */
-  //         count -= n_remain;
-  //         _usb_h_save_x_param(p, count);
-  //     }
-
-  //     /* Pipe IN: freeze status may delayed */
-  //     if (p->ep & 0x80) {
-  //         if (!hri_usbhs_get_HSTPIPIMR_reg(drv->hw, pi, USBHS_HSTPIPIMR_PFREEZE)) {
-  //             /* Pipe is not frozen in case of :
-  //             * - incomplete transfer when the request number INRQ is not
-  //             *   complete.
-  //             * - low USB speed and with a high CPU frequency,
-  //             *   a ACK from host can be always running on USB line.
-  //             */
-  //             if (n_remain) {
-  //                 /* Freeze pipe in case of incomplete transfer */
-  //                 hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIMR_PFREEZE);
-  //             } else {
-  //                 /* Wait freeze in case of ACK on going */
-  //                 while (!hri_usbhs_get_HSTPIPIMR_reg(drv->hw, pi, USBHS_HSTPIPIMR_PFREEZE)) {
-  //                 }
-  //             }
-  //         }
-  //     }
-  //     _usb_h_dma(p, (bool)n_remain);
-
-  return;
 }
 
 static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
