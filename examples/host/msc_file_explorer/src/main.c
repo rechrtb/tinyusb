@@ -51,6 +51,7 @@ int main(void)
   printf("TinyUSB Host MassStorage Explorer Example\r\n");
 
   board_usb_enable(true);
+  board_usb_set_host(true);
 
   board_trigger_pin(false);
 

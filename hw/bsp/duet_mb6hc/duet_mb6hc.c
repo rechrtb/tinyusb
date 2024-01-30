@@ -62,14 +62,17 @@ void board_init(void)
   gpio_set_pin_level(UsbPowerSwitchPin, false);
   gpio_set_pin_direction(UsbPowerSwitchPin, GPIO_DIRECTION_OUT);
   gpio_set_pin_function(UsbPowerSwitchPin, GPIO_PIN_FUNCTION_OFF);
+
   // UsbModePin
   gpio_set_pin_level(UsbModePin, false);
   gpio_set_pin_direction(UsbModePin, GPIO_DIRECTION_OUT);
   gpio_set_pin_function(UsbModePin, GPIO_PIN_FUNCTION_OFF);
-  // UsbModePin
+
+  // UsbDetectPin
   gpio_set_pin_direction(UsbDetectPin, GPIO_DIRECTION_IN);
-  gpio_set_pin_pull_mode(UsbDetectPin, GPIO_PULL_UP);
+  gpio_set_pin_pull_mode(UsbDetectPin, GPIO_PULL_OFF);
   gpio_set_pin_function(UsbDetectPin, GPIO_PIN_FUNCTION_OFF);
+
   // TriggerPin
   gpio_set_pin_level(TriggerPin, false);
   gpio_set_pin_direction(TriggerPin, GPIO_DIRECTION_OUT);
