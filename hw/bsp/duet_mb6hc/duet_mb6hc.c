@@ -48,16 +48,6 @@
 #define UART_TX_PIN           GPIO(GPIO_PORTB, 4)
 #define UART_RX_PIN           GPIO(GPIO_PORTA, 21)
 
-static struct usart_async_descriptor edbg_com;
-static uint8_t edbg_com_buffer[64];
-static volatile bool uart_busy = false;
-
-static void tx_cb_EDBG_COM(const struct usart_async_descriptor *const io_descr)
-{
-  (void) io_descr;
-  uart_busy = false;
-}
-
 //------------- IMPLEMENTATION -------------//
 void board_init(void)
 {
@@ -84,16 +74,6 @@ void board_init(void)
   gpio_set_pin_level(TriggerPin, false);
   gpio_set_pin_direction(TriggerPin, GPIO_DIRECTION_OUT);
   gpio_set_pin_function(TriggerPin, GPIO_PIN_FUNCTION_OFF);
-
-  // Uart via EDBG Com
-  _pmc_enable_periph_clock(ID_USART1);
-  gpio_set_pin_function(UART_RX_PIN, MUX_PA21A_USART1_RXD1);
-  gpio_set_pin_function(UART_TX_PIN, MUX_PB4D_USART1_TXD1);
-
-  usart_async_init(&edbg_com, USART1, edbg_com_buffer, sizeof(edbg_com_buffer), _usart_get_usart_async());
-  usart_async_set_baud_rate(&edbg_com, CFG_BOARD_UART_BAUDRATE);
-  usart_async_register_callback(&edbg_com, USART_ASYNC_TXC_CB, tx_cb_EDBG_COM);
-  usart_async_enable(&edbg_com);
 
 #if CFG_TUSB_OS  == OPT_OS_NONE
   // 1ms tick timer (samd SystemCoreClock may not correct)
@@ -145,22 +125,6 @@ void board_usb_enable(bool state)
 
 void board_led_write(bool state)
 {
-}
-
-int board_uart_read(uint8_t* buf, int len)
-{
-  (void) buf; (void) len;
-  return 0;
-}
-
-int board_uart_write(void const * buf, int len)
-{
-  // // while until previous transfer is complete
-  // while(uart_busy) {}
-  // uart_busy = true;
-
-  // io_write(&edbg_com.io, buf, len);
-  return len;
 }
 
 #if CFG_TUSB_OS  == OPT_OS_NONE
