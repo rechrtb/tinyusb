@@ -130,6 +130,16 @@ void board_led_write(bool state)
 {
 }
 
+int board_uart_read(uint8_t* buf, int len)
+{
+  return len;
+}
+
+int board_uart_write(void const * buf, int len)
+{
+  return len;
+}
+
 #if CFG_TUSB_OS  == OPT_OS_NONE
 volatile uint32_t system_ticks = 0;
 
