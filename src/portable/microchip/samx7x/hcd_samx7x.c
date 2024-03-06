@@ -254,7 +254,7 @@ static uint16_t hw_compute_psize(uint16_t size)
 
 static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
 {
-  uint8_t pipe = 23 - __CLZ(isr & USBHS_HSTISR_PEP__Msk);
+  uint8_t pipe = 23 - __CLZ(isr & HSTISR_PEP_);
   uint32_t pipisr = USB_REG->HSTPIPISR[pipe];
 
   uint8_t dev_addr = hw_pipe_get_dev_addr(rhport, pipe);
@@ -350,7 +350,7 @@ static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
 
 static void hw_handle_dma_int(uint8_t rhport, uint32_t isr)
 {
-  uint8_t pipe = 7 - __CLZ(isr & USBHS_HSTISR_DMA__Msk);
+  uint8_t pipe = 7 - __CLZ(isr & HSTISR_DMA_);
 
   uint8_t dev_addr = hw_pipe_get_dev_addr(rhport, pipe);
   uint8_t ep_addr = hw_pipe_get_ep_addr(rhport, pipe);
