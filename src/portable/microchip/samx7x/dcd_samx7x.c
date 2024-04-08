@@ -189,6 +189,7 @@ void dcd_disconnect(uint8_t rhport)
   USB_REG->DEVCTRL |= DEVCTRL_DETACH;
   // Disable the device address
   USB_REG->DEVCTRL &=~(DEVCTRL_ADDEN | DEVCTRL_UADD);
+  dcd_event_bus_signal(0, DCD_EVENT_UNPLUGGED, false);
 }
 
 void dcd_sof_enable(uint8_t rhport, bool en)
