@@ -283,6 +283,7 @@ static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
     // Clear and disable setup packet interrupt
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_TXSTPIC);
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_CTRL_TXSTPEC);
+    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
     // Notify USB stack of setup transmit success
     hcd_event_xfer_complete(dev_addr, ep_addr, 8, XFER_RESULT_SUCCESS, true);
     return;
