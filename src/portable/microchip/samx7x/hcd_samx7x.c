@@ -310,29 +310,16 @@ static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
       {
         *dst++ = *src++;
       }
-      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
       pipe_xfers[pipe].processed += rx;
-      if (pipe_xfers[pipe].processed >= pipe_xfers[pipe].total)
+      if (pipe_xfers[pipe].processed < pipe_xfers[pipe].total)
       {
-        hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].processed, XFER_RESULT_SUCCESS, true);
-      }
-      else
-      {
-        hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
+        hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC | HSTPIPIDR_FIFOCONC);
+        return;
       }
     }
-    else
-    {
-      // Zero-length packet
-      // // 	hri_usbhs_write_HSTPIPIER_reg(drv->hw, pi, USBHS_HSTPIPIER_PFREEZES);
-      // hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
-      // // 	hri_usbhs_write_HSTPIPIDR_reg(drv->hw, pi, USBHS_HSTPIPIDR_SHORTPACKETIEC | USBHS_HSTPIPIDR_RXINEC);
-      // hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_SHORTPACKETIEC | HSTPIPIDR_RXINEC);
-      // // 	hri_usbhs_write_HSTPIPINRQ_reg(drv->hw, pi, 0);
-      // USB_REG->HSTPIPINRQ[pipe] = 0;
-      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
-      hcd_event_xfer_complete(dev_addr, ep_addr, 0, XFER_RESULT_SUCCESS, true);
-    }
+    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_SHORTPACKETIEC | HSTPIPIDR_RXINEC);
+    hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
+    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
     return;
   }
 
