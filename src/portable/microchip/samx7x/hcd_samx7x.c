@@ -283,6 +283,7 @@ static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
     // Clear and disable setup packet interrupt
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_TXSTPIC);
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_CTRL_TXSTPEC);
+    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
     // Notify USB stack of setup transmit success
     hcd_event_xfer_complete(dev_addr, ep_addr, 8, XFER_RESULT_SUCCESS, true);
     return;
@@ -525,8 +526,12 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   }
   // Set pipe token to setup
   hw_pipe_set_token(rhport, pipe, HSTPIPCFG_PTOKEN_SETUP);
+  hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
   // Clear setup token interrupt
   hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_TXSTPIC);
+  // Enable setup token interrupt
+  hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_CTRL_TXSTPES);
+  // Disable pipe freeze and control clear
   // Copy setup data to USB buffer
   const uint8_t *src = setup_packet;
   uint8_t *dst = PEP_GET_FIFO_PTR(pipe, 8);
@@ -534,12 +539,10 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   {
     *dst++ = *src++;
   }
-  // Enable setup token interrupt
-  hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_CTRL_TXSTPES);
   // Disable pipe freeze and control clear
   __DSB();
   __ISB();
-  hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC | HSTPIPIDR_PFREEZEC);
+  hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
   return true;
 }
 
@@ -694,20 +697,26 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
       hw_pipe_set_token(rhport, pipe, HSTPIPCFG_PTOKEN_IN);
       hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_RXINIC | HSTPIPICR_SHORTPACKETIC);
       hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_RXINES);
+      __DSB();
+      __ISB();
+      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
     }
     else
     {
+      hw_pipe_set_token(rhport, pipe, HSTPIPCFG_PTOKEN_OUT);
+      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
+      hw_pipe_clear_reg(rhport, pipe, HSTPIPISR_TXOUTI);
       uint8_t *dst = PEP_GET_FIFO_PTR(pipe, 8);
       uint8_t *src = buffer;
       for (size_t i = 0; i < buflen; i++)
       {
         *dst++ = *src++;
       }
-      hw_pipe_set_token(rhport, pipe, HSTPIPCFG_PTOKEN_OUT);
-      hw_pipe_clear_reg(rhport, pipe, HSTPIPISR_TXOUTI);
       hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_TXOUTES);
+      __DSB();
+      __ISB();
+      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
     }
-    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC | HSTPIPIDR_PFREEZEC);
   }
 
   return true;
