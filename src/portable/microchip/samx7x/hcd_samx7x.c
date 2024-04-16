@@ -303,7 +303,7 @@ static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
     if (pipe_xfers[pipe].total)
     {
       uint32_t rx = hw_pipe_bytes(rhport, pipe);
-      uint8_t *src = EP_GET_FIFO_PTR(pipe, 8);
+      uint8_t *src = PEP_GET_FIFO_PTR(pipe, 8);
       uint8_t *dst = pipe_xfers[pipe].buffer + pipe_xfers[pipe].processed;
       for (size_t i = 0; i < rx; i++)
       {
@@ -529,7 +529,7 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_TXSTPIC);
   // Copy setup data to USB buffer
   const uint8_t *src = setup_packet;
-  uint8_t *dst = EP_GET_FIFO_PTR(pipe, 8);
+  uint8_t *dst = PEP_GET_FIFO_PTR(pipe, 8);
   for (size_t i = 0; i < 8; i++)
   {
     *dst++ = *src++;
@@ -695,7 +695,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
     }
     else
     {
-      uint8_t *dst = EP_GET_FIFO_PTR(pipe, 8);
+      uint8_t *dst = PEP_GET_FIFO_PTR(pipe, 8);
       uint8_t *src = buffer;
       for (size_t i = 0; i < buflen; i++)
       {

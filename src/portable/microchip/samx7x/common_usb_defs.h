@@ -34,7 +34,7 @@
 #include "common/tusb_common.h"
 #include "common_usb_regs.h"
 
-#define EP_GET_FIFO_PTR(ep, scale) (((TU_XSTRCAT(TU_STRCAT(uint, scale),_t) (*)[0x8000 / ((scale) / 8)])FIFO_RAM_ADDR)[(ep)])
+#define PEP_GET_FIFO_PTR(ep, scale) (((TU_XSTRCAT(TU_STRCAT(uint, scale),_t) (*)[0x8000 / ((scale) / 8)])FIFO_RAM_ADDR)[(ep)])
 #define DMA_TRANS_MAX   0x10000
 #define PIPE_MAX_PACKET_SIZE 1024
 
