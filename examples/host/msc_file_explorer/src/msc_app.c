@@ -92,6 +92,44 @@ void msc_app_task(void)
 //
 //--------------------------------------------------------------------+
 
+bool small_file(const char* drive_path)
+{
+  // change to newly mounted drive
+  f_chdir(drive_path);
+
+  static uint8_t buf[65536]; UINT count = 0;
+  const UINT chunk_size = 768; UINT chunk = 0;
+
+  FIL fi; const char* fpath = "sample.txt";
+  if ( FR_OK == f_open(&fi, fpath, FA_READ) )
+  {
+    while ( (FR_OK == f_read(&fi, buf + count, chunk_size, &chunk)) && (chunk > 0) )
+    {
+      count += chunk;
+    }
+  }
+
+  if (FR_OK == f_close(&fi))
+  {
+    FIL fi2; const char* fpath2 = "sample2.txt";
+    int count2 = count;
+
+    if ( FR_OK == f_open(&fi2, fpath2, FA_WRITE | FA_CREATE_ALWAYS) )
+    {
+      while ( (FR_OK == f_write(&fi2, (buf + count) - count2, chunk_size, &chunk)) && (count2 > 0))
+      {
+        count2 -= chunk;
+      }
+    }
+
+    if (FR_OK == f_close(&fi2) )
+    {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 bool inquiry_complete_cb(uint8_t dev_addr, tuh_msc_complete_data_t const * cb_data)
 {
@@ -116,39 +154,9 @@ bool inquiry_complete_cb(uint8_t dev_addr, tuh_msc_complete_data_t const * cb_da
     char drive_path[3] = "0:";
     drive_path[0] += drive_num;
 
-
     if ( f_mount(&fatfs[drive_num], drive_path, 1) == FR_OK )
     {
-      // change to newly mounted drive
-      f_chdir(drive_path);
-
-      static uint8_t buf[65536]; UINT count = 0;
-      const UINT chunk_size = 768; UINT chunk = 0;
-
-      FIL fi; const char* fpath = "sample.txt";
-      if ( FR_OK == f_open(&fi, fpath, FA_READ) )
-      {
-        while ( (FR_OK == f_read(&fi, buf + count, chunk_size, &chunk)) && (chunk > 0) )
-        {
-          count += chunk;
-        }
-      }
-
-      FIL fi2; const char* fpath2 = "sample2.txt";
-      int count2 = count;
-
-      if ( FR_OK == f_open(&fi2, fpath2, FA_WRITE | FA_CREATE_ALWAYS) )
-      {
-        while ( (FR_OK == f_write(&fi2, (buf + count) - count2, chunk_size, &chunk)) && (count2 > 0))
-        {
-          count2 -= chunk;
-        }
-      }
-
-      if ( FR_OK == f_close(&fi) && FR_OK == f_close(&fi2) )
-      {
-        return true;
-      }
+      return small_file(drive_path);
     }
   }
 
