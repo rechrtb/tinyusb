@@ -512,7 +512,7 @@ bool hcd_init(uint8_t rhport)
   USB_REG->CTRL &= ~(CTRL_UIMOD | CTRL_UID);
   USB_REG->CTRL |= CTRL_FRZCLK;
 
-  USB_REG->HSTCTRL |= HSTCTRL_SPDCONF;
+  USB_REG->HSTCTRL &= ~HSTCTRL_SPDCONF;
 
   // Force re-connection on initialization
   // TODO: check if this is really correct
