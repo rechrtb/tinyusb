@@ -90,6 +90,7 @@ typedef struct
   uint8_t *buffer;
   uint16_t total;
   uint16_t processed;
+  uint16_t out;
   bool dma;
 } hw_pipe_xfer_t;
 
@@ -252,6 +253,36 @@ static uint16_t hw_compute_psize(uint16_t size)
   return 7;
 }
 
+static uint16_t hw_pipe_get_size(uint16_t rhport, uint8_t pipe)
+{
+  return 64;
+}
+
+static bool hw_pipe_prepare_out(uint8_t rhport, uint8_t pipe)
+{
+  if (pipe_xfers[pipe].total)
+  {
+    uint16_t remain = - hw_pipe_bytes(rhport, pipe);
+    pipe_xfers[pipe].processed += pipe_xfers[pipe].out - remain;
+
+    if (pipe_xfers[pipe].processed < pipe_xfers[pipe].total)
+    {
+      uint16_t pipe_left = hw_pipe_get_size(rhport, pipe) - remain;
+      uint16_t buffer_left = pipe_xfers[pipe].total - pipe_xfers[pipe].processed;
+      pipe_xfers[pipe].out = pipe_left < buffer_left ? pipe_left : buffer_left;
+
+      uint8_t *dst = PEP_GET_FIFO_PTR(pipe, 8) + remain;
+      uint8_t *src = pipe_xfers[pipe].buffer + pipe_xfers[pipe].processed;
+      for (size_t i = 0; i < pipe_xfers[pipe].out; i++)
+      {
+        *dst++ = *src++;
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
 static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
 {
   uint8_t pipe = 23 - __CLZ(isr & HSTISR_PEP_);
@@ -329,6 +360,13 @@ static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
     hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
     // Clear and disable transmit interrupt
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
+
+    if(hw_pipe_prepare_out(rhport, pipe))
+    {
+      // Still more data to send
+      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC | HSTPIPIDR_FIFOCONC);
+      return;
+    }
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_TXOUTEC);
     // Notify the USB stack
     hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
@@ -671,6 +709,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
   pipe_xfers[pipe].buffer = buffer;
   pipe_xfers[pipe].total = buflen;
   pipe_xfers[pipe].processed = 0;
+  pipe_xfers[pipe].out = 0;
 
   if (pipe_xfers[pipe].dma)
   {
@@ -693,12 +732,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
       hw_pipe_set_token(rhport, pipe, HSTPIPCFG_PTOKEN_OUT);
       hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
       hw_pipe_clear_reg(rhport, pipe, HSTPIPISR_TXOUTI);
-      uint8_t *dst = PEP_GET_FIFO_PTR(pipe, 8);
-      uint8_t *src = buffer;
-      for (size_t i = 0; i < buflen; i++)
-      {
-        *dst++ = *src++;
-      }
+      hw_pipe_prepare_out(rhport, pipe);
       hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_TXOUTES);
       __DSB();
       __ISB();
