@@ -639,14 +639,6 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
   cfg |= (type == TUSB_XFER_CONTROL ? HSTPIPCFG_PTOKEN_SETUP : // set it to setup token; since it's
           in ? HSTPIPCFG_PTOKEN_IN : HSTPIPCFG_PTOKEN_OUT); // going to be set to this on setup anyways
 
-  uint16_t interval = ep_desc->bInterval;
-  tusb_speed_t speed = hcd_port_speed_get(rhport);
-  // TODO: check overriding zero interval for bandwith savings
-  cfg |= (uint32_t)interval << HSTPIPCFG_INTFRQ_Pos;
-
-  bool ping = (speed == TUSB_SPEED_HIGH) && (type == TUSB_XFER_CONTROL || (type == TUSB_XFER_BULK && !in));
-  cfg |= ping ? HSTPIPCFG_CTRL_BULK_PINGEN : 0; // use ping on high speed, control & bulk out pipes
-
   // ep_addr number, without dir bit
   cfg |= (HSTPIPCFG_PEPNUM & ((uint32_t)(ep_desc->bEndpointAddress) << HSTPIPCFG_PEPNUM_Pos));
 
