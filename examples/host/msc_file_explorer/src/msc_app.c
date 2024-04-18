@@ -131,6 +131,41 @@ bool small_file(const char* drive_path)
   return false;
 }
 
+
+bool large_file(const char* drive_path)
+{
+  // change to newly mounted drive
+  f_chdir(drive_path);
+
+  static uint8_t buf[4096];
+  static UINT total_read = 0;
+  static UINT total_written = 0;
+
+  FIL fi; const char* fpath = "large.txt";
+  FIL fi2; const char* fpath2 = "large2.txt";
+
+  if ( FR_OK == f_open(&fi, fpath, FA_READ) )
+  {
+    if (FR_OK == f_open(&fi2, fpath2, FA_WRITE | FA_CREATE_ALWAYS))
+    {
+      UINT count = 0, count2 = 0;
+      while ( (FR_OK == f_read(&fi, buf, sizeof(buf), &count)) && (count > 0) )
+      {
+        f_write(&fi2, buf, count, &count2);
+        total_read += count;
+        total_written += count2;
+      }
+
+      f_close(&fi2);
+    }
+    f_close(&fi);
+  }
+
+  return false;
+}
+
+
+
 bool inquiry_complete_cb(uint8_t dev_addr, tuh_msc_complete_data_t const * cb_data)
 {
   msc_cbw_t const* cbw = cb_data->cbw;
@@ -156,7 +191,8 @@ bool inquiry_complete_cb(uint8_t dev_addr, tuh_msc_complete_data_t const * cb_da
 
     if ( f_mount(&fatfs[drive_num], drive_path, 1) == FR_OK )
     {
-      return f_chdir(drive_path);
+      // return f_chdir(drive_path);
+      return large_file(drive_path);
     }
   }
 
