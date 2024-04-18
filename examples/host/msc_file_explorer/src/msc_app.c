@@ -156,7 +156,7 @@ bool inquiry_complete_cb(uint8_t dev_addr, tuh_msc_complete_data_t const * cb_da
 
     if ( f_mount(&fatfs[drive_num], drive_path, 1) == FR_OK )
     {
-      return small_file(drive_path);
+      return f_chdir(drive_path);
     }
   }
 
