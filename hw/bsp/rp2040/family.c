@@ -119,6 +119,21 @@ void stdio_rtt_init(void)
 static uart_inst_t *uart_inst;
 #endif
 
+void board_trigger_pin(bool state)
+{
+  (void) state;
+}
+
+void board_usb_set_host(bool host)
+{
+  (void) host;
+}
+
+bool board_usb_detect(void)
+{
+  return false;
+}
+
 void board_init(void)
 {
 #if CFG_TUH_RPI_PIO_USB || CFG_TUD_RPI_PIO_USB
