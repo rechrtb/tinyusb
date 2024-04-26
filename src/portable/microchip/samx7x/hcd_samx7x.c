@@ -255,7 +255,8 @@ static uint16_t hw_compute_psize(uint16_t size)
 
 static uint16_t hw_pipe_get_size(uint16_t rhport, uint8_t pipe)
 {
-  return 64;
+  (void) rhport;
+  return (1 << (((USB_REG->HSTPIPCFG[pipe] & HSTPIPCFG_PSIZE) >> HSTPIPCFG_PSIZE_Pos) + 3));
 }
 
 static bool hw_pipe_prepare_out(uint8_t rhport, uint8_t pipe)
@@ -358,7 +359,7 @@ static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
   {
     // Freeze the pipe
     hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
-    // Clear and disable transmit interrupt
+    // Clear transmit interrupt
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
 
     if(hw_pipe_prepare_out(rhport, pipe))
@@ -402,7 +403,7 @@ static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
   uint32_t flags = 0;
 
   uint8_t ep_addr = hw_pipe_get_ep_addr(rhport, pipe);
-  uint16_t max_size = 1 << (((USB_REG->HSTPIPCFG[pipe] & HSTPIPCFG_PSIZE) >> HSTPIPCFG_PSIZE_Pos) + 3);
+  uint16_t max_size = hw_pipe_get_size(rhport, pipe);
 
   uint32_t nextlen = pipe_xfers[pipe].total - pipe_xfers[pipe].processed;
   uint32_t maxlen = DMA_TRANS_MAX;
