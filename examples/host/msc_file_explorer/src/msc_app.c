@@ -100,7 +100,7 @@ bool small_file(const char* drive_path)
   static uint8_t buf[65536]; UINT count = 0;
   const UINT chunk_size = 768; UINT chunk = 0;
 
-  FIL fi; const char* fpath = "sample.txt";
+  FIL fi; const char* fpath = "small.txt";
   if ( FR_OK == f_open(&fi, fpath, FA_READ) )
   {
     while ( (FR_OK == f_read(&fi, buf + count, chunk_size, &chunk)) && (chunk > 0) )
@@ -111,7 +111,7 @@ bool small_file(const char* drive_path)
 
   if (FR_OK == f_close(&fi))
   {
-    FIL fi2; const char* fpath2 = "sample2.txt";
+    FIL fi2; const char* fpath2 = "small2.txt";
     int count2 = count;
 
     if ( FR_OK == f_open(&fi2, fpath2, FA_WRITE | FA_CREATE_ALWAYS) )
@@ -137,7 +137,7 @@ bool large_file(const char* drive_path)
   // change to newly mounted drive
   f_chdir(drive_path);
 
-  static uint8_t buf[4096];
+  static uint8_t buf[3584];
   static UINT total_read = 0;
   static UINT total_written = 0;
 
