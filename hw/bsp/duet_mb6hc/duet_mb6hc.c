@@ -36,8 +36,11 @@
 //--------------------------------------------------------------------+
 // MACRO TYPEDEF CONSTANT ENUM DECLARATION
 //--------------------------------------------------------------------+
-#define LED_PIN               GPIO(GPIO_PORTD, 26)
+#if CFG_TUH_ENABLED
+#define USB_HOST_POWER_PIN    GPIO(GPIO_PORTC, 6)
+#endif
 
+#define LED_PIN               GPIO(GPIO_PORTB, 26)
 #define BUTTON_PIN            GPIO(GPIO_PORTD, 25)
 #define BUTTON_STATE_ACTIVE   0
 
@@ -61,6 +64,14 @@ void board_init(void)
 
   /* Disable Watchdog */
   hri_wdt_set_MR_WDDIS_bit(WDT);
+
+#if CFG_TUH_ENABLED
+  // USB_HOST_POWER_PIN
+  _pmc_enable_periph_clock(ID_PIOC);
+  gpio_set_pin_level(USB_HOST_POWER_PIN, false);
+  gpio_set_pin_direction(USB_HOST_POWER_PIN, GPIO_DIRECTION_OUT);
+  gpio_set_pin_function(USB_HOST_POWER_PIN, GPIO_PIN_FUNCTION_OFF);
+#endif
 
   _pmc_enable_periph_clock(ID_PIOD);
 
@@ -92,7 +103,7 @@ void board_init(void)
   _pmc_enable_periph_clock(ID_USBHS);
 
 #if CFG_TUH_ENABLED
-  gpio_set_pin_level(USB_HOST_POWER_PIN, state);
+  gpio_set_pin_level(USB_HOST_POWER_PIN, true);
 # endif
 }
 
@@ -103,6 +114,10 @@ void USBHS_Handler(void)
 {
 #if CFG_TUD_ENABLED
   tud_int_handler(0);
+#endif
+
+#if CFG_TUH_ENABLED
+  tuh_int_handler(0);
 #endif
 }
 
