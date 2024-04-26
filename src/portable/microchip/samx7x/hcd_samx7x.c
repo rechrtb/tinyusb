@@ -654,7 +654,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
   }
 #endif
 
-  bool dma = false;// EP_DMA_SUPPORT(pipe) && type != TUSB_XFER_CONTROL;
+  bool dma = EP_DMA_SUPPORT(pipe) && type != TUSB_XFER_CONTROL;
 
   if (dma)
   {
