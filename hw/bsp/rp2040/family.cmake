@@ -7,6 +7,8 @@ if (NOT TARGET _rp2040_family_inclusion_marker)
 		set(BOARD pico_sdk)
 	endif()
 
+	add_compile_options("-g")
+
 	# add the SDK in case we are standalone tinyusb example (noop if already present)
 	include(${CMAKE_CURRENT_LIST_DIR}/pico_sdk_import.cmake)
 
