@@ -378,76 +378,52 @@ static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
 static void hw_handle_dma_int(uint8_t rhport, uint32_t isr)
 {
   uint8_t pipe = 7 - __CLZ(isr & HSTISR_DMA_);
+  uint8_t channel = pipe - 1;
 
-  uint8_t dev_addr = hw_pipe_get_dev_addr(rhport, pipe);
-  uint8_t ep_addr = hw_pipe_get_ep_addr(rhport, pipe);
-  uint32_t stat = USB_REG->HSTDMA[pipe - 1].HSTDMASTATUS;
+  uint32_t stat = USB_REG->HSTDMA[channel].HSTDMASTATUS;
 
   if (stat & HSTDMASTATUS_CHANN_ENB)
   {
     return; // ignore EOT_STA interrupt
   }
 
-  uint16_t remaining = (stat & HSTDMASTATUS_BUFF_COUNT) >> HSTDMASTATUS_BUFF_COUNT_Pos;
-  pipe_xfers[pipe].processed -= remaining;
+  USB_REG->HSTIDR |= HSTIDR_DMA_0 << channel;
+  uint16_t remain = (stat & HSTDMASTATUS_BUFF_COUNT) >> HSTDMASTATUS_BUFF_COUNT_Pos;
+  pipe_xfers[pipe].processed = pipe_xfers[pipe].total - remain;
 
-  if (pipe_xfers[pipe].processed >= pipe_xfers[pipe].total)
-  {
-    pipe_xfers[pipe].buffer = 0;
-    hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].processed, XFER_RESULT_SUCCESS, true);
-  }
+  uint8_t dev_addr = hw_pipe_get_dev_addr(rhport, pipe);
+  uint8_t ep_addr = hw_pipe_get_ep_addr(rhport, pipe);
+  hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].processed, XFER_RESULT_SUCCESS, true);
 }
 
 static bool hw_pipe_setup_dma(uint8_t rhport, uint8_t pipe, bool end)
 {
-  uint32_t flags = 0;
-
   uint8_t ep_addr = hw_pipe_get_ep_addr(rhport, pipe);
-  uint16_t max_size = hw_pipe_get_size(rhport, pipe);
 
-  uint32_t nextlen = pipe_xfers[pipe].total - pipe_xfers[pipe].processed;
-  uint32_t maxlen = DMA_TRANS_MAX;
-
-  if (ep_addr & TUSB_DIR_IN_MASK)
+  uint32_t dma_ctrl = USBHS_HSTDMACONTROL_BUFF_LENGTH(pipe_xfers[pipe].total);
+  // if (ep_addr & TUSB_DIR_IN_MASK)
+  // {
+  //   dma_ctrl |= HSTDMACONTROL_END_TR_IT | HSTDMACONTROL_END_TR_EN;
+  // }
+  // else
   {
-    if (256 * max_size < maxlen)
-    {
-      maxlen = 256 * max_size;
-    }
-  }
-
-  if (maxlen < nextlen)
-  {
-    nextlen = maxlen;
-  }
-
-  uint32_t dma_ctrl = USBHS_HSTDMACONTROL_BUFF_LENGTH((nextlen == DMA_TRANS_MAX) ? 0 : nextlen);
-
-  if (ep_addr & TUSB_DIR_IN_MASK)
-  {
-    dma_ctrl |= HSTDMACONTROL_END_TR_IT | HSTDMACONTROL_END_TR_EN;
-  }
-  else
-  {
-    if ((pipe_xfers[pipe].total & (max_size - 1)) != 0)
+    if ((pipe_xfers[pipe].total & (hw_pipe_get_size(rhport, pipe) - 1)) != 0)
     {
       dma_ctrl |= HSTDMACONTROL_END_B_EN;
     }
   }
 
-  USB_REG->HSTDMA[pipe - 1].HSTDMAADDRESS = (uint32_t)&pipe_xfers[pipe].buffer[pipe_xfers[pipe].processed];
+  uint8_t channel = pipe - 1;
+  USB_REG->HSTDMA[channel].HSTDMAADDRESS = (uint32_t)(&(pipe_xfers[pipe].buffer));
   dma_ctrl |= HSTDMACONTROL_END_BUFFIT | HSTDMACONTROL_CHANN_ENB;
 
+  uint32_t flags = 0;
   hw_enter_critical(&flags);
-  if (!(USB_REG->HSTDMA[pipe - 1].HSTDMASTATUS & HSTDMASTATUS_END_TR_ST))
+  if (!(USB_REG->HSTDMA[channel].HSTDMASTATUS & HSTDMASTATUS_END_TR_ST))
   {
-    if (ep_addr & TUSB_DIR_IN_MASK)
-    {
-      USB_REG->HSTPIPINRQ[pipe] = (nextlen + max_size - 1) / max_size - 1;
-    }
+    USB_REG->HSTIER |= HSTIER_DMA_0 << channel;
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC | HSTPIPIDR_PFREEZEC);
-    pipe_xfers[pipe].processed += nextlen;
-    USB_REG->HSTDMA[pipe - 1].HSTDMACONTROL = dma_ctrl;
+    USB_REG->HSTDMA[channel].HSTDMACONTROL = dma_ctrl;
     hw_exit_critical(&flags);
     return true;
   }
