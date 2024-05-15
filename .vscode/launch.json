@@ -17,7 +17,7 @@
         "serialNumber": "",
         "runToMain": true,
         "svdFile": "${workspaceRoot}/.vscode/ATSAME70Q20B.svd",
-        "armToolchainPath": "/opt/gcc-arm-none-eabi/10.3-2021.10/bin",
+        "armToolchainPath": "${workspaceRoot}/../gcc-arm-none-eabi/arm-gnu-toolchain-12.2.rel1-x86_64-arm-none-eabi/bin"
         },
         {
         "type": "cortex-debug",
@@ -32,7 +32,7 @@
         "serialNumber": "",
         "runToMain": true,
         "svdFile": "${workspaceRoot}/.vscode/ATSAME70Q20B.svd",
-        "armToolchainPath": "/opt/gcc-arm-none-eabi/10.3-2021.10/bin",
+        "armToolchainPath": "${workspaceRoot}/../gcc-arm-none-eabi/arm-gnu-toolchain-12.2.rel1-x86_64-arm-none-eabi/bin"
         },
         {
         "type": "cortex-debug",
@@ -47,7 +47,7 @@
         "serialNumber": "",
         "runToMain": true,
         "svdFile": "${workspaceRoot}/.vscode/rp2040.svd",
-        "armToolchainPath": "/opt/gcc-arm-none-eabi/10.3-2021.10/bin",
+        "armToolchainPath": "${workspaceRoot}/../gcc-arm-none-eabi/arm-gnu-toolchain-12.2.rel1-x86_64-arm-none-eabi/bin"
         },
     ]
 }
