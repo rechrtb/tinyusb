@@ -27,4 +27,5 @@ cov-int
 *-build-dir
 /_bin/
 __pycache__
+.vscode
 

@@ -46,7 +46,7 @@
         "interface": "swd",
         "serialNumber": "",
         "runToMain": true,
-        "svdFile": "${workspaceRoot}/.vscode/rp2040.svd",
+        "svdFile": "${workspaceRoot}/.vscode/RP2040.svd",
         "armToolchainPath": "${workspaceRoot}/../gcc-arm-none-eabi/arm-gnu-toolchain-12.2.rel1-x86_64-arm-none-eabi/bin"
         },
     ]

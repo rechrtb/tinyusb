@@ -1,3 +1,0 @@
-rm -rf examples/host/msc_file_explorer/_build/
-make -C examples/host/msc_file_explorer/ BOARD=duet_mb6hc LOG=2 LOGGER=rtt
-make -C examples/host/msc_file_explorer/ BOARD=duet_mb6hc
