@@ -265,7 +265,7 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint32_t pipis
     // Clear and disable setup packet interrupt
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_TXSTPIC);
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_CTRL_TXSTPEC);
-    // Notify USB stack of setup transmit success
+    // Notify TinyUSB of setup transmit success
     hcd_event_xfer_complete(dev_addr, ep_addr, 8, XFER_RESULT_SUCCESS, true);
     return true;
   }
@@ -277,13 +277,11 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint32_t pipis
     // In case of low USB speed and with a high CPU frequency,
     // a ACK from host can be always running on USB line
     // then wait end of ACK on IN pipe.
-    if (!(USB_REG->HSTPIPINRQ[pipe]))
-    {
-      while (!(USB_REG->HSTPIPIMR[pipe] & HSTPIPIMR_PFREEZE));
-    }
+    while (!(USB_REG->HSTPIPIMR[pipe] & HSTPIPIMR_PFREEZE));
 
-    if (pipe_xfers[pipe].total)
+    if (pipe_xfers[pipe].total) // if non-ZLP
     {
+      // Copy data from FIFO to buffer
       uint32_t rx = hw_pipe_bytes(rhport, pipe);
       uint8_t *src = PEP_GET_FIFO_PTR(pipe, 8);
       uint8_t *dst = pipe_xfers[pipe].buffer + pipe_xfers[pipe].done;
@@ -505,7 +503,7 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   {
     *dst++ = *src++;
   }
-  // Enable setup token interrupt
+  // Enable setup token sent interrupt
   hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_CTRL_TXSTPES);
   __DSB();
   __ISB();
