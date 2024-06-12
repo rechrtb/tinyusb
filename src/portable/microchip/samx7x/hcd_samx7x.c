@@ -37,6 +37,14 @@
 #include "common_usb_regs.h"
 #include "common_usb_defs.h"
 
+// Check that tusb_xfer_type_t has the same numerical value as the
+// peripheral definitions. This way, casting can be used instead of conditionals
+// or switches.
+static_assert(TUSB_XFER_CONTROL == HSTPIPCFG_PTYPE_CTRL_Val &&
+              TUSB_XFER_ISOCHRONOUS == HSTPIPCFG_PTYPE_ISO_Val &&
+              TUSB_XFER_BULK == HSTPIPCFG_PTYPE_BLK_Val &&
+              TUSB_XFER_INTERRUPT == HSTPIPCFG_PTYPE_INTRPT_Val);
+
 #ifndef USE_DUAL_BANK
 #  if TUD_OPT_HIGH_SPEED
 #    define USE_DUAL_BANK   0
@@ -51,8 +59,8 @@ typedef struct
 {
   uint8_t *buffer;
   uint16_t total;
-  uint16_t processed;
-  uint16_t out;
+  uint16_t done;
+  uint16_t current;
 } hw_pipe_xfer_t;
 
 static hw_pipe_xfer_t pipe_xfers[EP_MAX];
@@ -211,22 +219,28 @@ static uint16_t hw_pipe_get_size(uint16_t rhport, uint8_t pipe)
   return (1 << (((USB_REG->HSTPIPCFG[pipe] & HSTPIPCFG_PSIZE) >> HSTPIPCFG_PSIZE_Pos) + 3));
 }
 
+static tusb_xfer_type_t hw_pipe_get_type(uint16_t rhport, uint8_t pipe)
+{
+  (void) rhport;
+  return (tusb_xfer_type_t)((USB_REG->HSTPIPCFG[pipe] & HSTPIPCFG_PTYPE) >> HSTPIPCFG_PTYPE_Pos);
+}
+
 static bool hw_pipe_prepare_out(uint8_t rhport, uint8_t pipe)
 {
   if (pipe_xfers[pipe].total)
   {
     uint16_t remain = - hw_pipe_bytes(rhport, pipe);
-    pipe_xfers[pipe].processed += pipe_xfers[pipe].out - remain;
+    pipe_xfers[pipe].done += pipe_xfers[pipe].current - remain;
 
-    if (pipe_xfers[pipe].processed < pipe_xfers[pipe].total)
+    if (pipe_xfers[pipe].done < pipe_xfers[pipe].total)
     {
       uint16_t pipe_left = hw_pipe_get_size(rhport, pipe) - remain;
-      uint16_t buffer_left = pipe_xfers[pipe].total - pipe_xfers[pipe].processed;
-      pipe_xfers[pipe].out = pipe_left < buffer_left ? pipe_left : buffer_left;
+      uint16_t buffer_left = pipe_xfers[pipe].total - pipe_xfers[pipe].done;
+      pipe_xfers[pipe].current = pipe_left < buffer_left ? pipe_left : buffer_left;
 
       uint8_t *dst = PEP_GET_FIFO_PTR(pipe, 8) + remain;
-      uint8_t *src = pipe_xfers[pipe].buffer + pipe_xfers[pipe].processed;
-      for (size_t i = 0; i < pipe_xfers[pipe].out; i++)
+      uint8_t *src = pipe_xfers[pipe].buffer + pipe_xfers[pipe].done;
+      for (size_t i = 0; i < pipe_xfers[pipe].current; i++)
       {
         *dst++ = *src++;
       }
@@ -236,38 +250,15 @@ static bool hw_pipe_prepare_out(uint8_t rhport, uint8_t pipe)
   return false;
 }
 
-static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
+static void hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint32_t pipisr, uint8_t dev_addr, uint8_t ep_addr)
 {
-  uint8_t pipe = 23 - __CLZ(isr & HSTISR_PEP_);
-  uint32_t pipisr = USB_REG->HSTPIPISR[pipe];
-
-  uint8_t dev_addr = hw_pipe_get_dev_addr(rhport, pipe);
-  uint8_t ep_addr = hw_pipe_get_ep_addr(rhport, pipe);
-
-  if (pipisr & HSTPIPISR_CTRL_RXSTALLDI)
-  {
-    hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_RXSTALLDIC);
-    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_RSTDTS);
-    hw_pipe_abort(rhport, pipe);
-    hcd_event_xfer_complete(dev_addr, ep_addr, 0, XFER_RESULT_STALLED, true);
-    return;
-  }
-
-  if (pipisr & HSTPIPISR_PERRI)
-  {
-    xfer_result_t res = (USB_REG->HSTPIPERR[pipe] & HSTPIPERR_TIMEOUT)
-                        ? XFER_RESULT_TIMEOUT : XFER_RESULT_FAILED;
-    hw_pipe_abort(rhport, pipe);
-    hcd_event_xfer_complete(dev_addr, ep_addr, 0, res, true);
-    return;
-  }
 
   if (pipisr & HSTPIPISR_CTRL_TXSTPI)
   {
+    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
     // Clear and disable setup packet interrupt
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_TXSTPIC);
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_CTRL_TXSTPEC);
-    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
     // Notify USB stack of setup transmit success
     hcd_event_xfer_complete(dev_addr, ep_addr, 8, XFER_RESULT_SUCCESS, true);
     return;
@@ -289,13 +280,13 @@ static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
     {
       uint32_t rx = hw_pipe_bytes(rhport, pipe);
       uint8_t *src = PEP_GET_FIFO_PTR(pipe, 8);
-      uint8_t *dst = pipe_xfers[pipe].buffer + pipe_xfers[pipe].processed;
+      uint8_t *dst = pipe_xfers[pipe].buffer + pipe_xfers[pipe].done;
       for (size_t i = 0; i < rx; i++)
       {
         *dst++ = *src++;
       }
-      pipe_xfers[pipe].processed += rx;
-      if (pipe_xfers[pipe].processed < pipe_xfers[pipe].total)
+      pipe_xfers[pipe].done += rx;
+      if (pipe_xfers[pipe].done < pipe_xfers[pipe].total)
       {
         hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC | HSTPIPIDR_FIFOCONC);
         return;
@@ -327,6 +318,35 @@ static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
   }
 }
 
+static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
+{
+  uint8_t pipe = 23 - __CLZ(isr & HSTISR_PEP_);
+  uint32_t pipisr = USB_REG->HSTPIPISR[pipe];
+
+  uint8_t dev_addr = hw_pipe_get_dev_addr(rhport, pipe);
+  uint8_t ep_addr = hw_pipe_get_ep_addr(rhport, pipe);
+
+  if (pipisr & HSTPIPISR_CTRL_RXSTALLDI)
+  {
+    hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_RXSTALLDIC);
+    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_RSTDTS);
+    hw_pipe_abort(rhport, pipe);
+    hcd_event_xfer_complete(dev_addr, ep_addr, 0, XFER_RESULT_STALLED, true);
+    return;
+  }
+
+  if (pipisr & HSTPIPISR_PERRI)
+  {
+    xfer_result_t res = (USB_REG->HSTPIPERR[pipe] & HSTPIPERR_TIMEOUT)
+                        ? XFER_RESULT_TIMEOUT : XFER_RESULT_FAILED;
+    hw_pipe_abort(rhport, pipe);
+    hcd_event_xfer_complete(dev_addr, ep_addr, 0, res, true);
+    return;
+  }
+
+  hw_handle_fifo_pipe_int(rhport, pipe, pipisr, dev_addr, ep_addr);
+}
+
 static void hw_handle_rh_int(uint8_t rhport, uint32_t isr)
 {
   // Device reset
@@ -337,6 +357,9 @@ static void hw_handle_rh_int(uint8_t rhport, uint32_t isr)
     ready = true;
     return;
   }
+
+  USB_REG->CTRL &= ~CTRL_FRZCLK;
+  while (!(USB_REG->SR & SR_CLKUSABLE));
 
   // Device disconnection
   if (isr & HSTISR_DDISCI)
@@ -364,9 +387,6 @@ static void hw_handle_rh_int(uint8_t rhport, uint32_t isr)
   // Host wakeup
   if (isr & HSTISR_HWUPI)
   {
-    USB_REG->CTRL &= ~CTRL_FRZCLK;
-    while (!(USB_REG->SR & SR_CLKUSABLE));
-
     USB_REG->HSTIDR |= HSTIDR_HWUPIEC;
     USB_REG->SFR |= SFR_VBUSRQS;
     USB_REG->HSTICR |= HSTICR_HWUPIC;
@@ -387,13 +407,15 @@ bool hcd_init(uint8_t rhport)
 
   USB_REG->HSTCTRL &= ~HSTCTRL_SPDCONF;
 
-  // Force re-connection on initialization
-  USB_REG->HSTIFR |= HSTIMR_DDISCIE | HSTIMR_HWUPIE;
-
   USB_REG->CTRL = CTRL_USBE;
-  USB_REG->HSTICR |= (HSTICR_DCONNIC | HSTICR_HSOFIC | HSTICR_RSMEDIC | HSTICR_RSTIC | HSTICR_RXRSMIC);
+
+  USBHS->USBHS_HSTICR = USBHS_HSTICR_DCONNIC | USBHS_HSTICR_DDISCIC
+      | USBHS_HSTICR_HSOFIC  | USBHS_HSTICR_HWUPIC
+      | USBHS_HSTICR_RSMEDIC | USBHS_HSTICR_RSTIC
+      | USBHS_HSTICR_RXRSMIC;
   USB_REG->CTRL |= CTRL_VBUSHWC; // datasheet indicates must be set to 1
-  USB_REG->HSTIER |= HSTIER_DCONNIES | HSTIMR_RSTIE | HSTIER_HWUPIES;
+  USB_REG->HSTIER = HSTIER_DCONNIES | HSTIMR_RSTIE | HSTIER_HWUPIES;
+  USB_REG->HSTIDR = HSTIDR_HSOFIEC; // interrupts not used, just count registers
 
   ready = false;
 
@@ -423,12 +445,8 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   }
   // Set pipe token to setup
   hw_pipe_set_token(rhport, pipe, HSTPIPCFG_PTOKEN_SETUP);
-  hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
   // Clear setup token interrupt
   hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_TXSTPIC);
-  // Enable setup token interrupt
-  hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_CTRL_TXSTPES);
-  // Disable pipe freeze and control clear
   // Copy setup data to USB buffer
   const uint8_t *src = setup_packet;
   uint8_t *dst = PEP_GET_FIFO_PTR(pipe, 8);
@@ -436,10 +454,12 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   {
     *dst++ = *src++;
   }
-  // Disable pipe freeze and control clear
+  // Enable setup token interrupt
+  hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_CTRL_TXSTPES);
   __DSB();
   __ISB();
-  hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
+  // Disable pipe freeze and control clear
+  hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC | HSTPIPIDR_PFREEZEC);
   return true;
 }
 
@@ -500,10 +520,6 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
   // Prepare pipe configuration
   uint32_t cfg = 0;
 
-  static_assert(TUSB_XFER_CONTROL == HSTPIPCFG_PTYPE_CTRL_Val && // check that tusb_xfer_type_t has
-                TUSB_XFER_ISOCHRONOUS == HSTPIPCFG_PTYPE_ISO_Val && // the same numerical value as
-                TUSB_XFER_BULK == HSTPIPCFG_PTYPE_BLK_Val && // the one the peripheral expects, to
-                TUSB_XFER_INTERRUPT == HSTPIPCFG_PTYPE_INTRPT_Val); // avoid a switch statement/ if-else
   tusb_xfer_type_t type = ep_desc->bmAttributes.xfer;
   cfg |= (uint32_t)type << HSTPIPCFG_PTYPE_Pos;
 
@@ -525,8 +541,8 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
   }
 #endif
 
-  cfg |= HSTPIPCFG_ALLOC; // alloc dpram for pipe
 
+  cfg |= HSTPIPCFG_ALLOC; // alloc dpram for pipe
   hw_pipe_enable(rhport, pipe, true);
   USB_REG->HSTPIPCFG[pipe] = cfg; // write prepared configuration
 
@@ -544,6 +560,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_RXSTALLDIC | HSTPIPICR_OVERFIC | HSTPIPISR_PERRI | HSTPIPICR_INTRPT_UNDERFIC);
     hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_CTRL_RXSTALLDES | HSTPIPIER_OVERFIES | HSTPIPIER_PERRES);
     USB_REG->HSTIER |= (HSTISR_PEP_0) << pipe;
+
     return true;
   }
 
@@ -562,9 +579,11 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 
   pipe_xfers[pipe].buffer = buffer;
   pipe_xfers[pipe].total = buflen;
-  pipe_xfers[pipe].processed = 0;
-  pipe_xfers[pipe].out = 0;
+  pipe_xfers[pipe].done = 0;
+  pipe_xfers[pipe].current = 0;
 
+
+  USB_REG->HSTPIPCFG[pipe] &= ~HSTPIPCFG_AUTOSW;
   if (ep_addr & TUSB_DIR_IN_MASK)
   {
     hw_pipe_set_token(rhport, pipe, HSTPIPCFG_PTOKEN_IN);
