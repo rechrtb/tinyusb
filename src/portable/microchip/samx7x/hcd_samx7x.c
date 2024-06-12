@@ -289,10 +289,13 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint32_t pipis
       {
         *dst++ = *src++;
       }
+      __DSB();
+      __ISB();
+
       pipe_xfers[pipe].done += rx;
       if (pipe_xfers[pipe].done < pipe_xfers[pipe].total)
       {
-        hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC | HSTPIPIDR_FIFOCONC);
+        hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
         return true;
       }
     }
@@ -304,17 +307,16 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint32_t pipis
 
   if ((pipisr & HSTPIPISR_TXOUTI) & (pipmsk & HSTPIPIMR_TXOUTE))
   {
-    // Freeze the pipe
-    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
     // Clear transmit interrupt
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
-
     if(hw_pipe_prepare_out(rhport, pipe))
     {
       // Still more data to send
-      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC | HSTPIPIDR_FIFOCONC);
+      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
       return true;
     }
+    // Freeze the pipe
+    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_TXOUTEC);
     // Notify the USB stack
     hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
@@ -630,25 +632,23 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
   pipe_xfers[pipe].done = 0;
   pipe_xfers[pipe].current = 0;
 
-  USB_REG->HSTPIPCFG[pipe] &= ~HSTPIPCFG_AUTOSW;
+  if (hw_pipe_get_type(rhport, pipe) == TUSB_XFER_CONTROL) // control pipes are bi-directional, set correct token
+  {
+    hw_pipe_set_token(rhport, pipe, (ep_addr & TUSB_DIR_IN_MASK) ? HSTPIPCFG_PTOKEN_IN : HSTPIPCFG_PTOKEN_OUT);
+  }
+
   if (ep_addr & TUSB_DIR_IN_MASK)
   {
-    hw_pipe_set_token(rhport, pipe, HSTPIPCFG_PTOKEN_IN);
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_RXINIC);
     hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_RXINES);
-    __DSB();
-    __ISB();
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
   }
   else
   {
-    hw_pipe_set_token(rhport, pipe, HSTPIPCFG_PTOKEN_OUT);
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
     hw_pipe_clear_reg(rhport, pipe, HSTPIPISR_TXOUTI);
     hw_pipe_prepare_out(rhport, pipe);
     hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_TXOUTES);
-    __DSB();
-    __ISB();
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
   }
 
