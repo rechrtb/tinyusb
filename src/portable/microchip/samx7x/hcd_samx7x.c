@@ -250,9 +250,8 @@ static bool hw_pipe_prepare_out(uint8_t rhport, uint8_t pipe)
   return false;
 }
 
-static void hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint32_t pipisr, uint8_t dev_addr, uint8_t ep_addr)
+static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint32_t pipisr, uint8_t dev_addr, uint8_t ep_addr)
 {
-
   if (pipisr & HSTPIPISR_CTRL_TXSTPI)
   {
     hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
@@ -261,7 +260,7 @@ static void hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint32_t pipis
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_CTRL_TXSTPEC);
     // Notify USB stack of setup transmit success
     hcd_event_xfer_complete(dev_addr, ep_addr, 8, XFER_RESULT_SUCCESS, true);
-    return;
+    return true;
   }
 
   if (pipisr & HSTPIPISR_RXINI || pipisr & HSTPIPISR_SHORTPACKETI)
@@ -289,13 +288,13 @@ static void hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint32_t pipis
       if (pipe_xfers[pipe].done < pipe_xfers[pipe].total)
       {
         hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC | HSTPIPIDR_FIFOCONC);
-        return;
+        return true;
       }
     }
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_SHORTPACKETIEC | HSTPIPIDR_RXINEC);
     hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
-    return;
+    return true;
   }
 
   if (pipisr & HSTPIPISR_TXOUTI)
@@ -309,16 +308,18 @@ static void hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint32_t pipis
     {
       // Still more data to send
       hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC | HSTPIPIDR_FIFOCONC);
-      return;
+      return true;
     }
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_TXOUTEC);
     // Notify the USB stack
     hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
-    return;
+    return true;
   }
+
+  return false;
 }
 
-static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
+static bool hw_handle_pipe_int(uint8_t rhport, uint32_t isr, uint32_t mask)
 {
   uint8_t pipe = 23 - __CLZ(isr & HSTISR_PEP_);
   uint32_t pipisr = USB_REG->HSTPIPISR[pipe];
@@ -332,7 +333,7 @@ static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
     hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_RSTDTS);
     hw_pipe_abort(rhport, pipe);
     hcd_event_xfer_complete(dev_addr, ep_addr, 0, XFER_RESULT_STALLED, true);
-    return;
+    return true;
   }
 
   if (pipisr & HSTPIPISR_PERRI)
@@ -341,59 +342,91 @@ static void hw_handle_pipe_int(uint8_t rhport, uint32_t isr)
                         ? XFER_RESULT_TIMEOUT : XFER_RESULT_FAILED;
     hw_pipe_abort(rhport, pipe);
     hcd_event_xfer_complete(dev_addr, ep_addr, 0, res, true);
-    return;
+    return true;
   }
 
-  hw_handle_fifo_pipe_int(rhport, pipe, pipisr, dev_addr, ep_addr);
+  return hw_handle_fifo_pipe_int(rhport, pipe, pipisr, dev_addr, ep_addr);
 }
 
-static void hw_handle_rh_int(uint8_t rhport, uint32_t isr)
+static bool hw_handle_rh_int(uint8_t rhport, uint32_t isr, uint32_t mask)
 {
   // Device reset
-  if (isr & HSTISR_RSTI)
+  if ((isr & HSTISR_RSTI) & (mask & HSTIMR_RSTIE))
   {
-    USB_REG->HSTICR |= HSTICR_RSTIC;
-    USB_REG->HSTIDR |= HSTIDR_RSTIEC;
+    // Acknowledge device reset interrupt
+    USB_REG->HSTICR = HSTICR_RSTIC;
+    USB_REG->HSTIDR = HSTIDR_RSTIEC;
     ready = true;
-    return;
+    return true;
   }
 
-  USB_REG->CTRL &= ~CTRL_FRZCLK;
+	// Wait for USB clock to be ready on asynchronous interrupt
   while (!(USB_REG->SR & SR_CLKUSABLE));
 
   // Device disconnection
-  if (isr & HSTISR_DDISCI)
+  if ((isr & HSTISR_DDISCI) & (mask & HSTIMR_DDISCIE))
   {
-    USB_REG->HSTICR = HSTICR_DDISCIC | HSTICR_DCONNIC;
-    USB_REG->HSTIDR = HSTIDR_DDISCIEC | HSTIDR_HWUPIEC | HSTIDR_RSMEDIEC | HSTIDR_RXRSMIEC;
+    // Acknowledge disconnection interrupt
+    USB_REG->HSTICR = HSTICR_DDISCIC;
+    USB_REG->HSTIDR = HSTIDR_DDISCIEC;
+
+    // Disable reset, in case of disconnection during reset
     USB_REG->HSTCTRL &= ~HSTCTRL_RESET;
-    USB_REG->HSTICR = HSTICR_DCONNIC | HSTICR_HWUPIC | HSTICR_RSMEDIC | HSTICR_RXRSMIC;
-    USB_REG->HSTIER = HSTIER_DCONNIES | HSTIER_HWUPIES | HSTIER_RSMEDIES | HSTIER_RXRSMIES;
+
+		// Disable wakeup/resumes interrupts,
+		// in case of disconnection during suspend mode
+    USB_REG->HSTIDR = HSTIDR_HWUPIEC | HSTIDR_RSMEDIEC | HSTIDR_RXRSMIEC;
+
+    // Restore host speed detection in case the disconnected LS device
+		USBHS->USBHS_HSTCTRL &= ~USBHS_HSTCTRL_SPDCONF_Msk;
+		USBHS->USBHS_HSTCTRL |= USBHS_HSTCTRL_SPDCONF_NORMAL;
+
+    // Prepare for connection/wakeup interrupt
+    USB_REG->HSTICR = HSTICR_DCONNIC | HSTICR_HWUPIC;
+    USB_REG->HSTIER = HSTIER_DCONNIES | HSTIER_HWUPIES;
+
+    // Send the event to tinyUSB
     hcd_event_device_remove(rhport, true);
-    return;
+    return true;
   }
 
   // Device connection
-  if (isr & HSTISR_DCONNI)
+  if ((isr & HSTISR_DCONNI) & (mask & HSTIMR_DCONNIE))
   {
+    // Acknowledge connection interrupt
     USB_REG->HSTICR |= HSTICR_DCONNIC;
-    USB_REG->HSTIDR |= HSTISR_DCONNI;
-    USB_REG->HSTIER |= HSTIER_DDISCIES;
+    USB_REG->HSTIDR |= HSTIDR_DCONNIEC;
+
+    // Prepare for disconnection interrupt
+    USB_REG->HSTICR = HSTICR_DDISCIC;
+    USB_REG->HSTIDR = HSTIDR_DDISCIEC;
+
+    // Enable SOF generation
     USB_REG->HSTCTRL |= HSTCTRL_SOFE;
+
+    // Send the event to TinyUSB
     hcd_event_device_attach(rhport, true);
-    return;
+    return true;
   }
 
   // Host wakeup
-  if (isr & HSTISR_HWUPI)
+  if (((isr & HSTISR_HWUPI) & (mask & HSTIMR_HWUPIE))||
+      ((isr & HSTISR_RSMEDI) & (mask & HSTIMR_RSMEDIE))||
+      ((isr & HSTISR_RXRSMI) & (mask & HSTIMR_RXRSMIE)))
   {
-    USB_REG->HSTIDR |= HSTIDR_HWUPIEC;
+    USB_REG->HSTICR = HSTICR_HWUPIC | HSTICR_RSMEDIC | HSTICR_RXRSMIC;
+    USB_REG->HSTIDR = HSTIDR_HWUPIEC | HSTIDR_RSMEDIEC | HSTIDR_RXRSMIEC;
+
+    // Enable SOF generation
+    USB_REG->HSTCTRL |= HSTCTRL_SOFE;
+
+    // Enable device detection
     USB_REG->SFR |= SFR_VBUSRQS;
-    USB_REG->HSTICR |= HSTICR_HWUPIC;
-    USB_REG->HSTIDR |= HSTIDR_HWUPIEC;
-    USB_REG->HSTIER |= HSTIER_DCONNIES;
-    return;
+    USB_REG->HSTIER = HSTIER_DCONNIES;
+    return true;
   }
+
+  return false;
 }
 
 bool hcd_init(uint8_t rhport)
@@ -541,7 +574,6 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
   }
 #endif
 
-
   cfg |= HSTPIPCFG_ALLOC; // alloc dpram for pipe
   hw_pipe_enable(rhport, pipe, true);
   USB_REG->HSTPIPCFG[pipe] = cfg; // write prepared configuration
@@ -582,7 +614,6 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
   pipe_xfers[pipe].done = 0;
   pipe_xfers[pipe].current = 0;
 
-
   USB_REG->HSTPIPCFG[pipe] &= ~HSTPIPCFG_AUTOSW;
   if (ep_addr & TUSB_DIR_IN_MASK)
   {
@@ -611,29 +642,30 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 void hcd_int_handler(uint8_t rhport)
 {
   uint32_t isr = USB_REG->HSTISR;
+  uint32_t mask = USB_REG->HSTIMR;
 
-  // Change to low power mode to only use the 48 MHz clock on LS
-  if (hcd_port_speed_get(rhport) == TUSB_SPEED_LOW)
+  // Change to low power mode to only use the 48 MHz clock during low-speed
+  if (hcd_port_speed_get(rhport) == TUSB_SPEED_LOW &&
+      (!(USB_REG->HSTCTRL & USBHS_HSTCTRL_SPDCONF_Msk)))
   {
-    if (!(USB_REG->HSTCTRL & USBHS_HSTCTRL_SPDCONF_Msk))
-    {
-      USB_REG->HSTCTRL |= HSTCTRL_SPDCONF_LOW_POWER;
-    }
+    USB_REG->HSTCTRL |= HSTCTRL_SPDCONF_LOW_POWER;
   }
 
+  bool handled = false;
+
   // Pipe processing & exception interrupts
-  if (isr & HSTISR_PEP_)
+  if (!handled && (isr & HSTISR_PEP_))
   {
-    hw_handle_pipe_int(rhport, isr);
-    return;
+    handled |= hw_handle_pipe_int(rhport, isr, mask);
   }
 
   // Host global (root hub) processing interrupts
-  if (isr & (HSTISR_RSTI | HSTISR_DCONNI | HSTISR_DDISCI | HSTISR_HWUPI | HSTISR_RXRSMI))
+  if (!handled && (isr & (HSTISR_RSTI | HSTISR_DCONNI | HSTISR_DDISCI | HSTISR_HWUPI | HSTISR_RXRSMI | HSTISR_RSMEDI)))
   {
-    hw_handle_rh_int(rhport, isr);
-    return;
+    handled |= hw_handle_rh_int(rhport, isr, mask);
   }
+
+  assert(handled); // error condition
 }
 
 #endif
