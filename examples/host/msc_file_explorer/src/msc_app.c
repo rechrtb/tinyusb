@@ -92,55 +92,117 @@ void msc_app_task(void)
 //
 //--------------------------------------------------------------------+
 
+bool small_file(const char* drive_path)
+{
+  // change to newly mounted drive
+  f_chdir(drive_path);
+
+  static uint8_t buf[65536]; UINT count = 0;
+  const UINT chunk_size = 768; UINT chunk = 0;
+
+  FIL fi; const char* fpath = "small.txt";
+  if ( FR_OK == f_open(&fi, fpath, FA_READ) )
+  {
+    while ( (FR_OK == f_read(&fi, buf + count, chunk_size, &chunk)) && (chunk > 0) )
+    {
+      count += chunk;
+    }
+  }
+
+  if (FR_OK == f_close(&fi))
+  {
+    FIL fi2; const char* fpath2 = "small2.txt";
+    int count2 = count;
+
+    if ( FR_OK == f_open(&fi2, fpath2, FA_WRITE | FA_CREATE_ALWAYS) )
+    {
+      while ( (FR_OK == f_write(&fi2, (buf + count) - count2, chunk_size, &chunk)) && (count2 > 0))
+      {
+        count2 -= chunk;
+      }
+    }
+
+    if (FR_OK == f_close(&fi2) )
+    {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+
+bool large_file(const char* drive_path)
+{
+  // change to newly mounted drive
+  f_chdir(drive_path);
+
+  static uint8_t buf[3584];
+  static UINT total_read = 0;
+  static UINT total_written = 0;
+
+  FIL fi; const char* fpath = "large.txt";
+  FIL fi2; const char* fpath2 = "large2.txt";
+
+  if ( FR_OK == f_open(&fi, fpath, FA_READ) )
+  {
+    if (FR_OK == f_open(&fi2, fpath2, FA_WRITE | FA_CREATE_ALWAYS))
+    {
+      UINT count = 0, count2 = 0;
+      while ( (FR_OK == f_read(&fi, buf, sizeof(buf), &count)) && (count > 0) )
+      {
+        f_write(&fi2, buf, count, &count2);
+        total_read += count;
+        total_written += count2;
+      }
+
+      f_close(&fi2);
+    }
+    f_close(&fi);
+  }
+
+  return false;
+}
+
+
 
 bool inquiry_complete_cb(uint8_t dev_addr, tuh_msc_complete_data_t const * cb_data)
 {
   msc_cbw_t const* cbw = cb_data->cbw;
   msc_csw_t const* csw = cb_data->csw;
 
-  if (csw->status != 0)
+  if (csw->status == 0)
   {
-    printf("Inquiry failed\r\n");
-    return false;
+    // printf("Inquiry failed\r\n");
+    // Print out Vendor ID, Product ID and Rev
+    // printf("%.8s %.16s rev %.4s\r\n", inquiry_resp.vendor_id, inquiry_resp.product_id, inquiry_resp.product_rev);
+
+    // Get capacity of device
+    uint32_t const block_count = tuh_msc_get_block_count(dev_addr, cbw->lun);
+    uint32_t const block_size = tuh_msc_get_block_size(dev_addr, cbw->lun);
+
+    // printf("Disk Size: %lu MB\r\n", block_count / ((1024*1024)/block_size));
+    // printf("Block Count = %lu, Block Size: %lu\r\n", block_count, block_size);
+
+    // For simplicity: we only mount 1 LUN per device
+    uint8_t const drive_num = dev_addr-1;
+    char drive_path[3] = "0:";
+    drive_path[0] += drive_num;
+
+    if ( f_mount(&fatfs[drive_num], drive_path, 1) == FR_OK )
+    {
+      // return f_chdir(drive_path);
+      return small_file(drive_path);
+    }
   }
 
-  // Print out Vendor ID, Product ID and Rev
-  printf("%.8s %.16s rev %.4s\r\n", inquiry_resp.vendor_id, inquiry_resp.product_id, inquiry_resp.product_rev);
-
-  // Get capacity of device
-  uint32_t const block_count = tuh_msc_get_block_count(dev_addr, cbw->lun);
-  uint32_t const block_size = tuh_msc_get_block_size(dev_addr, cbw->lun);
-
-  printf("Disk Size: %lu MB\r\n", block_count / ((1024*1024)/block_size));
-  // printf("Block Count = %lu, Block Size: %lu\r\n", block_count, block_size);
-
-  // For simplicity: we only mount 1 LUN per device
-  uint8_t const drive_num = dev_addr-1;
-  char drive_path[3] = "0:";
-  drive_path[0] += drive_num;
-
-  if ( f_mount(&fatfs[drive_num], drive_path, 1) != FR_OK )
-  {
-    puts("mount failed");
-  }
-
-  // change to newly mounted drive
-  f_chdir(drive_path);
-
-  // print the drive label
-//  char label[34];
-//  if ( FR_OK == f_getlabel(drive_path, label, NULL) )
-//  {
-//    puts(label);
-//  }
-
-  return true;
+  return false;
 }
 
 //------------- IMPLEMENTATION -------------//
 void tuh_msc_mount_cb(uint8_t dev_addr)
 {
-  printf("A MassStorage device is mounted\r\n");
+  // printf("A MassStorage device is mounted\r\n");
 
   uint8_t const lun = 0;
   tuh_msc_inquiry(dev_addr, lun, &inquiry_resp, inquiry_complete_cb, 0);
