@@ -515,7 +515,13 @@ static bool hw_handle_dma_int(uint8_t rhport)
           while(!hw_pipe_frozen(rhport, pipe));
         }
       }
-      hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total - remaining, XFER_RESULT_SUCCESS, true);
+
+      uint32_t xfered = pipe_xfers[pipe].total - remaining;
+      if (ep_addr & TUSB_DIR_IN_MASK)
+      {
+        hw_cache_invalidate(pipe_xfers[pipe].buffer, xfered);
+      }
+      hcd_event_xfer_complete(dev_addr, ep_addr, xfered, XFER_RESULT_SUCCESS, true);
     }
     else
     {
@@ -861,10 +867,11 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
       uint32_t dma_ctrl = USBHS_HSTDMACONTROL_BUFF_LENGTH(pipe_xfers[pipe].total);
       if (ep_addr & TUSB_DIR_IN_MASK)
       {
-        hw_cache_invalidate(pipe_xfers[pipe].buffer, pipe_xfers[pipe].total);
+        hw_cache_invalidate_prepare(pipe_xfers[pipe].buffer, pipe_xfers[pipe].total);
         if (hw_pipe_get_type(rhport, pipe) != TUSB_XFER_ISOCHRONOUS ||
             pipe_xfers[pipe].total <= pipe_size)
         {
+          // Enable short packet reception
           dma_ctrl |= HSTDMACONTROL_END_TR_IT | HSTDMACONTROL_END_TR_EN;
         }
       }
@@ -896,6 +903,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
       }
       else
       {
+        return false;
         hw_exit_critical(&flags);
       }
     }
