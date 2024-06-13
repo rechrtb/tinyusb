@@ -87,6 +87,11 @@ static inline uint8_t hw_pipe_interrupt(uint8_t rhport)
   return __builtin_ctz((((USB_REG->HSTISR) & (USB_REG->HSTIMR)) >> 8) | (1 << EP_MAX));
 }
 
+static inline uint8_t hw_pipe_dma_interrupt(uint8_t rhport)
+{
+	return (__builtin_ctz((((USB_REG->HSTISR) & (USB_REG->HSTIMR)) >> 25) | (1 << (EP_MAX-1))) + 1);
+}
+
 static inline void hw_pipe_clear_reg(uint8_t rhport, uint8_t pipe, uint32_t mask)
 {
   (void) rhport;
@@ -469,53 +474,59 @@ static bool hw_handle_pipe_int(uint8_t rhport)
   return false;
 }
 
+
 static bool hw_handle_dma_int(uint8_t rhport)
 {
-  uint8_t pipe = 7 - __CLZ((USB_REG->HSTISR) & HSTISR_DMA_);
-  uint8_t channel = pipe - 1;
+  uint8_t pipe = hw_pipe_dma_interrupt(rhport);
 
-  uint32_t stat = USB_REG->HSTDMA[channel].HSTDMASTATUS;
-
-  if (stat & HSTDMASTATUS_CHANN_ENB)
+  if (pipe < EP_MAX)
   {
-    return true; // ignore EOT_STA interrupt
-  }
+    uint8_t channel = pipe - 1;
 
-  uint8_t dev_addr = hw_pipe_get_dev_addr(rhport, pipe);
-  uint8_t ep_addr = hw_pipe_get_ep_addr(rhport, pipe);
-
-  if (ep_addr & TUSB_DIR_IN_MASK)
-  {
-    uint16_t remaining = (stat & HSTDMASTATUS_BUFF_COUNT) >> HSTDMASTATUS_BUFF_COUNT_Pos;
-    if (!(USB_REG->HSTPIPIMR[pipe] & HSTPIPIMR_PFREEZE))
+    uint32_t stat = USB_REG->HSTDMA[channel].HSTDMASTATUS;
+    if (stat & HSTDMASTATUS_CHANN_ENB)
     {
-      // Pipe is not frozen in case of :
-      // - incomplete transfer when the request number INRQ is not complete.
-      // - low USB speed and with a high CPU frequency,
-      // a ACK from host can be always running on USB line.
-      if (remaining)
+      return true; // ignore EOT_STA interrupt
+    }
+
+    uint8_t dev_addr = hw_pipe_get_dev_addr(rhport, pipe);
+    uint8_t ep_addr = hw_pipe_get_ep_addr(rhport, pipe);
+
+    if (ep_addr & TUSB_DIR_IN_MASK)
+    {
+      uint16_t remaining = (stat & HSTDMASTATUS_BUFF_COUNT) >> HSTDMASTATUS_BUFF_COUNT_Pos;
+      if (!(USB_REG->HSTPIPIMR[pipe] & HSTPIPIMR_PFREEZE))
       {
-        hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
+        // Pipe is not frozen in case of :
+        // - incomplete transfer when the request number INRQ is not complete.
+        // - low USB speed and with a high CPU frequency,
+        // a ACK from host can be always running on USB line.
+        if (remaining)
+        {
+          hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
+        }
+        else
+        {
+          while(!(USB_REG->HSTPIPIMR[pipe] & HSTPIPIMR_PFREEZE));
+        }
       }
-      else
+      hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total - remaining, XFER_RESULT_SUCCESS, true);
+    }
+    else
+    {
+      // Turn on busy bank interrupt. For pipes other than isochronous OUT,
+      // the transfer complete event is handled there.
+      hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_NBUSYBKES);
+      if (hw_pipe_get_type(rhport, pipe) == TUSB_XFER_ISOCHRONOUS)
       {
-        while(!(USB_REG->HSTPIPIMR[pipe] & HSTPIPIMR_PFREEZE));
+        hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
       }
     }
-    hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total - remaining, XFER_RESULT_SUCCESS, true);
-  }
-  else
-  {
-    // Turn on busy bank interrupt. For pipes other than isochronous OUT,
-    // the transfer complete event is handled there.
-    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_NBUSYBKES);
-    if (hw_pipe_get_type(rhport, pipe) == TUSB_XFER_ISOCHRONOUS)
-    {
-      hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
-    }
+
+    return true;
   }
 
-  return true;
+  return false;
 }
 
 static bool hw_handle_rh_int(uint8_t rhport)
