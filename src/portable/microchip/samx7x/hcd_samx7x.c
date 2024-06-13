@@ -403,7 +403,7 @@ bool hw_handle_ctrl_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_addr, uin
 
 static bool hw_handle_dma_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_addr, uint8_t ep_addr)
 {
-  if ((((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_NBUSYBK) >> HSTPIPISR_NBUSYBK_Pos) == 0 )
+  if (((((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_NBUSYBK) >> HSTPIPISR_NBUSYBK_Pos) == 0) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_NBUSYBKE))
   {
     hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC);
@@ -522,10 +522,8 @@ static bool hw_handle_dma_int(uint8_t rhport)
         hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
       }
     }
-
     return true;
   }
-
   return false;
 }
 
