@@ -371,7 +371,7 @@ static bool hw_handle_rh_int(uint8_t rhport, uint32_t isr, uint32_t mask)
     return true;
   }
 
-  // Wait for USB clock to be ready on asynchronous interrupt
+  // Wait for USB clock to be connected on asynchronous interrupt
   while (!(USB_REG->SR & SR_CLKUSABLE));
 
   // Device disconnection
@@ -392,9 +392,16 @@ static bool hw_handle_rh_int(uint8_t rhport, uint32_t isr, uint32_t mask)
     USBHS->USBHS_HSTCTRL &= ~USBHS_HSTCTRL_SPDCONF_Msk;
     USBHS->USBHS_HSTCTRL |= USBHS_HSTCTRL_SPDCONF_NORMAL;
 
-    // Prepare for connection/wakeup interrupt
-    USB_REG->HSTICR = HSTICR_DCONNIC | HSTICR_HWUPIC;
-    USB_REG->HSTIER = HSTIER_DCONNIES | HSTIER_HWUPIES;
+    __DSB();
+    __ISB();
+
+    USB_REG->HSTICR = HSTICR_DCONNIC;
+    USB_REG->HSTIER = HSTIER_DCONNIES;
+
+    USB_REG->HSTICR = HSTICR_HWUPIC;
+    USB_REG->HSTIER = HSTIER_HWUPIES;
+
+    connected[rhport] = false;
 
     // Send the event to tinyUSB
     hcd_event_device_remove(rhport, true);
@@ -432,7 +439,6 @@ static bool hw_handle_rh_int(uint8_t rhport, uint32_t isr, uint32_t mask)
     USB_REG->HSTCTRL |= HSTCTRL_SOFE;
 
     // Enable device detection
-    USB_REG->SFR |= SFR_VBUSRQS;
     USB_REG->HSTIER = HSTIER_DCONNIES;
     return true;
   }
@@ -446,21 +452,35 @@ bool hcd_init(uint8_t rhport)
   hcd_int_disable(rhport);
   hw_pipes_reset(rhport);
 
+  // Set host mode
   USB_REG->CTRL &= ~(CTRL_UIMOD | CTRL_UID);
+
+  // Freeze USB clock for now
   USB_REG->CTRL |= CTRL_FRZCLK;
 
-  USB_REG->HSTCTRL &= ~HSTCTRL_SPDCONF;
+  // Set USB to switch to high speed if necessary
+  USBHS->USBHS_HSTCTRL &= ~USBHS_HSTCTRL_SPDCONF_Msk;
+  USBHS->USBHS_HSTCTRL |= USBHS_HSTCTRL_SPDCONF_NORMAL;
 
+  // Force re-connection on initialization
+  USB_REG->HSTIFR |= HSTIMR_DDISCIE | HSTIMR_HWUPIE;
+
+  // Enable USB
   USB_REG->CTRL = CTRL_USBE;
 
+	// Clear all interrupts that may have been set by a previous host mode
   USBHS->USBHS_HSTICR = USBHS_HSTICR_DCONNIC | USBHS_HSTICR_DDISCIC
       | USBHS_HSTICR_HSOFIC  | USBHS_HSTICR_HWUPIC
       | USBHS_HSTICR_RSMEDIC | USBHS_HSTICR_RSTIC
       | USBHS_HSTICR_RXRSMIC;
+
+
   USB_REG->CTRL |= CTRL_VBUSHWC; // datasheet indicates must be set to 1
-  USB_REG->HSTIER = HSTIER_DCONNIES | HSTIMR_RSTIE | HSTIER_HWUPIES;
+  USB_REG->SFR |= SFR_VBUSRQS;
+
   USB_REG->HSTIDR = HSTIDR_HSOFIEC; // interrupts not used, just count registers
 
+  USB_REG->HSTIER = HSTIER_DCONNIES | HSTIER_RSTIES;
 
   connected[rhport] = false;
   return true;
