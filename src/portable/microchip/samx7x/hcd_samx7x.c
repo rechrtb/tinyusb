@@ -409,7 +409,7 @@ static bool hw_handle_rh_int(uint8_t rhport, uint32_t isr, uint32_t mask)
 
     // Prepare for disconnection interrupt
     USB_REG->HSTICR = HSTICR_DDISCIC;
-    USB_REG->HSTIDR = HSTIDR_DDISCIEC;
+    USB_REG->HSTIER = HSTIER_DDISCIES;
 
     // Enable SOF generation
     USB_REG->HSTCTRL |= HSTCTRL_SOFE;
