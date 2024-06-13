@@ -519,7 +519,7 @@ static bool hw_handle_dma_int(uint8_t rhport)
       uint32_t xfered = pipe_xfers[pipe].total - remaining;
       if (ep_addr & TUSB_DIR_IN_MASK)
       {
-        hw_cache_invalidate(pipe_xfers[pipe].buffer, xfered);
+        hw_dcache_invalidate(pipe_xfers[pipe].buffer, xfered);
       }
       hcd_event_xfer_complete(dev_addr, ep_addr, xfered, XFER_RESULT_SUCCESS, true);
     }
@@ -864,7 +864,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
     uint16_t pipe_size = hw_pipe_get_size(rhport, pipe);
     if (ep_addr & TUSB_DIR_IN_MASK)
     {
-      hw_cache_invalidate_prepare(pipe_xfers[pipe].buffer, pipe_xfers[pipe].total);
+      hw_dcache_invalidate_prepare(pipe_xfers[pipe].buffer, pipe_xfers[pipe].total);
       if (hw_pipe_get_type(rhport, pipe) != TUSB_XFER_ISOCHRONOUS ||
           pipe_xfers[pipe].total <= pipe_size)
       {
@@ -874,7 +874,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
     }
     else
     {
-      hw_cache_flush(pipe_xfers[pipe].buffer, pipe_xfers[pipe].total);
+      hw_dcache_flush(pipe_xfers[pipe].buffer, pipe_xfers[pipe].total);
       if (pipe_xfers[pipe].total % pipe_size != 0)
       {
         dma_ctrl |= HSTDMACONTROL_END_B_EN;
