@@ -858,7 +858,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
   if (pipe_xfers[pipe].dma)
   {
     uint16_t pipe_size = hw_pipe_get_size(rhport, pipe);
-    uint32_t size_max  = (ep_addr & TUSB_DIR_IN_MASK) ? pipe_size * DMA_INRQ_MAX : DMA_TRANS_MAX;
+    uint32_t size_max  = (ep_addr & TUSB_DIR_IN_MASK) ? pipe_size * PIPINRQ_MAX : DMA_TRANS_MAX;
 
     if (pipe_xfers[pipe].total <= size_max) // TODO: implement support for very large buffers
     {
