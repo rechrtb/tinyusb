@@ -53,8 +53,9 @@ static_assert(TUSB_XFER_CONTROL == HSTPIPCFG_PTYPE_CTRL_Val &&
 #  endif
 #endif
 
-static bool ready = false;
+#define RET_IF_TRUE(fn)      if (fn) { return; }
 
+static bool ready = false;
 typedef struct
 {
   uint8_t *buffer;
@@ -658,21 +659,19 @@ void hcd_int_handler(uint8_t rhport)
     USB_REG->HSTCTRL |= HSTCTRL_SPDCONF_LOW_POWER;
   }
 
-  bool handled = false;
-
   // Pipe processing & exception interrupts
-  if (!handled && (isr & HSTISR_PEP_))
+  if (isr & HSTISR_PEP_)
   {
-    handled |= hw_handle_pipe_int(rhport, isr, mask);
+    RET_IF_TRUE(hw_handle_pipe_int(rhport, isr, mask));
   }
 
   // Host global (root hub) processing interrupts
-  if (!handled && (isr & (HSTISR_RSTI | HSTISR_DCONNI | HSTISR_DDISCI | HSTISR_HWUPI | HSTISR_RXRSMI | HSTISR_RSMEDI)))
+  if (isr & (HSTISR_RSTI | HSTISR_DCONNI | HSTISR_DDISCI | HSTISR_HWUPI | HSTISR_RXRSMI | HSTISR_RSMEDI))
   {
-    handled |= hw_handle_rh_int(rhport, isr, mask);
+    RET_IF_TRUE(hw_handle_rh_int(rhport, isr, mask));
   }
 
-  assert(handled); // error condition
+  assert(false); // error condition
 }
 
 #endif
