@@ -92,6 +92,11 @@ static inline uint8_t hw_pipe_dma_interrupt(uint8_t rhport)
 	return (__builtin_ctz((((USB_REG->HSTISR) & (USB_REG->HSTIMR)) >> 25) | (1 << (EP_MAX-1))) + 1);
 }
 
+static inline bool hw_pipe_frozen(uint8_t rhport, uint8_t pipe)
+{
+  return (USB_REG->HSTPIPIMR[pipe] & HSTPIPIMR_PFREEZE);
+}
+
 static inline void hw_pipe_clear_reg(uint8_t rhport, uint8_t pipe, uint32_t mask)
 {
   (void) rhport;
@@ -495,7 +500,7 @@ static bool hw_handle_dma_int(uint8_t rhport)
     if (ep_addr & TUSB_DIR_IN_MASK)
     {
       uint16_t remaining = (stat & HSTDMASTATUS_BUFF_COUNT) >> HSTDMASTATUS_BUFF_COUNT_Pos;
-      if (!(USB_REG->HSTPIPIMR[pipe] & HSTPIPIMR_PFREEZE))
+      if (!hw_pipe_frozen(rhport, pipe))
       {
         // Pipe is not frozen in case of :
         // - incomplete transfer when the request number INRQ is not complete.
@@ -507,7 +512,7 @@ static bool hw_handle_dma_int(uint8_t rhport)
         }
         else
         {
-          while(!(USB_REG->HSTPIPIMR[pipe] & HSTPIPIMR_PFREEZE));
+          while(!hw_pipe_frozen(rhport, pipe));
         }
       }
       hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total - remaining, XFER_RESULT_SUCCESS, true);
