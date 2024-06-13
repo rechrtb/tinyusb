@@ -35,9 +35,9 @@
 #include "common_usb_regs.h"
 
 #define PEP_GET_FIFO_PTR(ep, scale) (((TU_XSTRCAT(TU_STRCAT(uint, scale),_t) (*)[0x8000 / ((scale) / 8)])FIFO_RAM_ADDR)[(ep)])
-#define DMA_TRANS_MAX   0x10000
+#define DMA_TRANS_MAX   0x8000
 #define PIPE_MAX_PACKET_SIZE 1024
-#define DMA_INRQ_MAX 256
+#define PIPINRQ_MAX 256
 
 
 TU_ATTR_ALWAYS_INLINE static inline void hw_enter_critical(volatile uint32_t *atomic)
