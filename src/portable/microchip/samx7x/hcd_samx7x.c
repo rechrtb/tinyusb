@@ -68,6 +68,7 @@ typedef struct
   uint8_t *buffer;
   uint16_t total;
   uint16_t done;
+  bool dma;
 } hw_pipe_xfer_t;
 
 static hw_pipe_xfer_t pipe_xfers[EP_MAX];
@@ -395,6 +396,26 @@ bool hw_handle_ctrl_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_addr, uin
   return false;
 }
 
+static bool hw_handle_dma_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_addr, uint8_t ep_addr)
+{
+  if ((((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_NBUSYBK) >> HSTPIPISR_NBUSYBK_Pos) == 0 )
+  {
+    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
+    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC);
+
+    if (hw_pipe_get_type(rhport, pipe) != TUSB_XFER_ISOCHRONOUS)
+    {
+      // For OUT isochronous pipes, already sent transfer complete event
+      // during DMA interrupt handling.
+      hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
 static bool hw_handle_pipe_int(uint8_t rhport)
 {
   uint8_t pipe = hw_pipe_interrupt(rhport);
@@ -408,8 +429,9 @@ static bool hw_handle_pipe_int(uint8_t rhport)
 
     bool handled = hw_pipe_get_type(rhport, pipe) == TUSB_XFER_CONTROL ?
                    //events[events_idx++] = 32 &&
-                   hw_handle_ctrl_pipe_int(rhport, pipe, dev_addr, ep_addr) :
+                   hw_handle_ctrl_pipe_int(rhport, pipe, dev_addr, ep_addr) : pipe_xfers[pipe].dma ?
                    //events[events_idx++] = 33 &&
+                   hw_handle_dma_pipe_int(rhport, pipe, dev_addr, ep_addr) :
                    hw_handle_fifo_pipe_int(rhport, pipe, dev_addr, ep_addr);
 
     if (!handled)
@@ -445,6 +467,55 @@ static bool hw_handle_pipe_int(uint8_t rhport)
   }
 
   return false;
+}
+
+static bool hw_handle_dma_int(uint8_t rhport)
+{
+  uint8_t pipe = 7 - __CLZ((USB_REG->HSTISR) & HSTISR_DMA_);
+  uint8_t channel = pipe - 1;
+
+  uint32_t stat = USB_REG->HSTDMA[channel].HSTDMASTATUS;
+
+  if (stat & HSTDMASTATUS_CHANN_ENB)
+  {
+    return true; // ignore EOT_STA interrupt
+  }
+
+  uint8_t dev_addr = hw_pipe_get_dev_addr(rhport, pipe);
+  uint8_t ep_addr = hw_pipe_get_ep_addr(rhport, pipe);
+
+  if (ep_addr & TUSB_DIR_IN_MASK)
+  {
+    uint16_t remaining = (stat & HSTDMASTATUS_BUFF_COUNT) >> HSTDMASTATUS_BUFF_COUNT_Pos;
+    if (!(USB_REG->HSTPIPIMR[pipe] & HSTPIPIMR_PFREEZE))
+    {
+      // Pipe is not frozen in case of :
+      // - incomplete transfer when the request number INRQ is not complete.
+      // - low USB speed and with a high CPU frequency,
+      // a ACK from host can be always running on USB line.
+      if (remaining)
+      {
+        hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
+      }
+      else
+      {
+        while(!(USB_REG->HSTPIPIMR[pipe] & HSTPIPIMR_PFREEZE));
+      }
+    }
+    hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total - remaining, XFER_RESULT_SUCCESS, true);
+  }
+  else
+  {
+    // Turn on busy bank interrupt. For pipes other than isochronous OUT,
+    // the transfer complete event is handled there.
+    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_NBUSYBKES);
+    if (hw_pipe_get_type(rhport, pipe) == TUSB_XFER_ISOCHRONOUS)
+    {
+      hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
+    }
+  }
+
+  return true;
 }
 
 static bool hw_handle_rh_int(uint8_t rhport)
@@ -737,7 +808,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
     // configure pipe-related interrupts
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_RXSTALLDIC | HSTPIPICR_OVERFIC | HSTPIPISR_PERRI | HSTPIPICR_INTRPT_UNDERFIC);
     hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_CTRL_RXSTALLDES | HSTPIPIER_OVERFIES | HSTPIPIER_PERRES);
-    USB_REG->HSTIER = (HSTISR_PEP_0) << pipe;
+    USB_REG->HSTIER = (HSTISR_PEP_0 | (HSTISR_DMA_0 >> 1)) << pipe;
 
     return true;
   }
@@ -759,37 +830,97 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
   pipe_xfers[pipe].total = buflen;
   pipe_xfers[pipe].done = 0;
 
-  //events[events_idx++] = 20;
+  // Use DMA for non-ZLP out transfers on supported, non-control pipes.
+  pipe_xfers[pipe].dma = (pipe_xfers[pipe].total || (ep_addr & TUSB_DIR_IN_MASK))
+                         && EP_DMA_SUPPORT(pipe) &&
+                         hw_pipe_get_type(rhport, pipe) != TUSB_XFER_CONTROL;
 
-  bool in = ep_addr & TUSB_DIR_IN_MASK;
+  if (pipe_xfers[pipe].dma)
+  {
+    uint16_t pipe_size = hw_pipe_get_size(rhport, pipe);
+    uint32_t size_max  = (ep_addr & TUSB_DIR_IN_MASK) ? pipe_size * DMA_INRQ_MAX : DMA_TRANS_MAX;
 
-  if (hw_pipe_get_type(rhport, pipe) == TUSB_XFER_CONTROL)
-  {
-    //events[events_idx++] = 21;
-    hw_pipe_ctrl_xfer(rhport, pipe, in);
-  }
-  else
-  {
-    //events[events_idx++] = 22;
-    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
-    if (ep_addr & TUSB_DIR_IN_MASK)
+    if (pipe_xfers[pipe].total <= size_max) // TODO: implement support for very large buffers
     {
-      //events[events_idx++] = 23;
-      USB_REG->HSTPIPINRQ[pipe] |= HSTPIPINRQ_INMODE;
-      hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_RXINES);
+      USB_REG->HSTPIPCFG[pipe] |= HSTPIPCFG_AUTOSW;
+
+      uint32_t dma_ctrl = USBHS_HSTDMACONTROL_BUFF_LENGTH(pipe_xfers[pipe].total);
+      if (ep_addr & TUSB_DIR_IN_MASK)
+      {
+        hw_cache_invalidate(pipe_xfers[pipe].buffer, pipe_xfers[pipe].total);
+        if (hw_pipe_get_type(rhport, pipe) != TUSB_XFER_ISOCHRONOUS ||
+            pipe_xfers[pipe].total <= pipe_size)
+        {
+          dma_ctrl |= HSTDMACONTROL_END_TR_IT | HSTDMACONTROL_END_TR_EN;
+        }
+      }
+      else
+      {
+        hw_cache_flush(pipe_xfers[pipe].buffer, pipe_xfers[pipe].total);
+        if (pipe_xfers[pipe].total % pipe_size != 0)
+        {
+          dma_ctrl |= HSTDMACONTROL_END_B_EN;
+        }
+      }
+
+      uint8_t channel = pipe - 1;
+      USB_REG->HSTDMA[channel].HSTDMAADDRESS = (uint32_t)(pipe_xfers[pipe].buffer);
+      dma_ctrl |= HSTDMACONTROL_END_BUFFIT | HSTDMACONTROL_CHANN_ENB;
+
+      uint32_t flags = 0;
+      hw_enter_critical(&flags);
+      if (!(USB_REG->HSTDMA[channel].HSTDMASTATUS & HSTDMASTATUS_END_TR_ST))
+      {
+        if (ep_addr & TUSB_DIR_IN_MASK)
+        {
+          USB_REG->HSTPIPINRQ[pipe] = HSTPIPINRQ_INRQ &
+            ((((pipe_xfers[pipe].total + (pipe_size - 1)) / pipe_size) - 1) << HSTPIPINRQ_INRQ_Pos);
+        }
+        hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC | HSTPIPIDR_PFREEZEC);
+        USB_REG->HSTDMA[channel].HSTDMACONTROL = dma_ctrl;
+        hw_exit_critical(&flags);
+      }
+      else
+      {
+        hw_exit_critical(&flags);
+      }
     }
     else
     {
-      //events[events_idx++] = 24;
-      hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_TXOUTES);
-      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC);
+      return false;
     }
-    USB_REG->HSTIER = (HSTISR_PEP_0) << pipe;
+  }
+  else
+  {
+    bool in = ep_addr & TUSB_DIR_IN_MASK;
+
+    if (hw_pipe_get_type(rhport, pipe) == TUSB_XFER_CONTROL)
+    {
+      //events[events_idx++] = 21;
+      hw_pipe_ctrl_xfer(rhport, pipe, in);
+    }
+    else
+    {
+      //events[events_idx++] = 22;
+      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
+      if (ep_addr & TUSB_DIR_IN_MASK)
+      {
+        //events[events_idx++] = 23;
+        USB_REG->HSTPIPINRQ[pipe] |= HSTPIPINRQ_INMODE;
+        hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_RXINES);
+      }
+      else
+      {
+        //events[events_idx++] = 24;
+        hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_TXOUTES);
+        hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC);
+      }
+      USB_REG->HSTIER = (HSTISR_PEP_0) << pipe;
+    }
   }
 
   return true;
 }
-
 void hcd_int_handler(uint8_t rhport)
 {
   // Change to low power mode to only use the 48 MHz clock during low-speed
@@ -824,6 +955,12 @@ void hcd_int_handler(uint8_t rhport)
   if ((USB_REG->HSTISR) & HSTISR_PEP_)
   {
     RET_IF_TRUE(hw_handle_pipe_int(rhport));
+  }
+
+  // DMA processing interrupts
+  if ((USB_REG->HSTISR) & HSTISR_DMA_)
+  {
+    RET_IF_TRUE(hw_handle_dma_int(rhport));
   }
 
   // Host global (root hub) processing interrupts
