@@ -74,7 +74,7 @@ static inline bool hw_pipe_enabled(uint8_t rhport, uint8_t pipe)
 
 static inline uint8_t hw_pipe_interrupt(uint8_t rhport, uint32_t isr, uint32_t mask)
 {
-	return __builtin_ctz(((isr & mask) >> 8) | (1 << EP_MAX));
+  return __builtin_ctz(((isr & mask) >> 8) | (1 << EP_MAX));
 }
 
 static inline void hw_pipe_clear_reg(uint8_t rhport, uint8_t pipe, uint32_t mask)
@@ -370,7 +370,7 @@ static bool hw_handle_rh_int(uint8_t rhport, uint32_t isr, uint32_t mask)
     return true;
   }
 
-	// Wait for USB clock to be ready on asynchronous interrupt
+  // Wait for USB clock to be ready on asynchronous interrupt
   while (!(USB_REG->SR & SR_CLKUSABLE));
 
   // Device disconnection
@@ -383,13 +383,13 @@ static bool hw_handle_rh_int(uint8_t rhport, uint32_t isr, uint32_t mask)
     // Disable reset, in case of disconnection during reset
     USB_REG->HSTCTRL &= ~HSTCTRL_RESET;
 
-		// Disable wakeup/resumes interrupts,
-		// in case of disconnection during suspend mode
+    // Disable wakeup/resumes interrupts,
+    // in case of disconnection during suspend mode
     USB_REG->HSTIDR = HSTIDR_HWUPIEC | HSTIDR_RSMEDIEC | HSTIDR_RXRSMIEC;
 
     // Restore host speed detection in case the disconnected LS device
-		USBHS->USBHS_HSTCTRL &= ~USBHS_HSTCTRL_SPDCONF_Msk;
-		USBHS->USBHS_HSTCTRL |= USBHS_HSTCTRL_SPDCONF_NORMAL;
+    USBHS->USBHS_HSTCTRL &= ~USBHS_HSTCTRL_SPDCONF_Msk;
+    USBHS->USBHS_HSTCTRL |= USBHS_HSTCTRL_SPDCONF_NORMAL;
 
     // Prepare for connection/wakeup interrupt
     USB_REG->HSTICR = HSTICR_DCONNIC | HSTICR_HWUPIC;
