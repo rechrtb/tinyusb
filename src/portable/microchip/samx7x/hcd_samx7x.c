@@ -245,10 +245,7 @@ static bool hw_pipe_prepare_out(uint8_t rhport, uint8_t pipe)
 
       uint8_t *dst = PEP_GET_FIFO_PTR(pipe, 8) + remain;
       uint8_t *src = pipe_xfers[pipe].buffer + pipe_xfers[pipe].done;
-      for (size_t i = 0; i < pipe_xfers[pipe].current; i++)
-      {
-        *dst++ = *src++;
-      }
+      memcpy(dst, src, pipe_xfers[pipe].current);
       return true;
     }
   }
@@ -285,13 +282,7 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint32_t pipis
       uint32_t rx = hw_pipe_bytes(rhport, pipe);
       uint8_t *src = PEP_GET_FIFO_PTR(pipe, 8);
       uint8_t *dst = pipe_xfers[pipe].buffer + pipe_xfers[pipe].done;
-      for (size_t i = 0; i < rx; i++)
-      {
-        *dst++ = *src++;
-      }
-      __DSB();
-      __ISB();
-
+      memcpy(dst, src, rx);
       pipe_xfers[pipe].done += rx;
       if (pipe_xfers[pipe].done < pipe_xfers[pipe].total)
       {
