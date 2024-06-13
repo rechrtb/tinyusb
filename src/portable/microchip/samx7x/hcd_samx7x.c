@@ -189,12 +189,13 @@ static void hw_pipe_reset(uint8_t rhport, uint8_t pipe)
   USB_REG->HSTPIP &= ~mask; // remove pipe from reset
 }
 
-static void hw_pipes_reset(uint8_t rhport)
+__attribute__ ((noinline)) static void  hw_pipes_reset(uint8_t rhport)
 {
   (void)rhport;
-  for (uint8_t i = 0; i < EP_MAX; i++)
+  for (int8_t i = EP_MAX - 1; i >= 0; i--) // go from high to low endpoints
   {
     hw_pipe_reset(rhport, i);
+    USB_REG->HSTPIPCFG[i] = 0;
   }
 }
 
@@ -394,6 +395,8 @@ static bool hw_handle_rh_int(uint8_t rhport, uint32_t isr, uint32_t mask)
 
     __DSB();
     __ISB();
+
+    hw_pipes_reset(rhport);
 
     USB_REG->HSTICR = HSTICR_DCONNIC;
     USB_REG->HSTIER = HSTIER_DCONNIES;
