@@ -55,7 +55,8 @@ static_assert(TUSB_XFER_CONTROL == HSTPIPCFG_PTYPE_CTRL_Val &&
 
 #define RET_IF_TRUE(fn)      if (fn) { return; }
 
-static bool ready = false;
+static volatile bool connected[1] = { false };
+
 typedef struct
 {
   uint8_t *buffer;
@@ -366,7 +367,7 @@ static bool hw_handle_rh_int(uint8_t rhport, uint32_t isr, uint32_t mask)
     // Acknowledge device reset interrupt
     USB_REG->HSTICR = HSTICR_RSTIC;
     USB_REG->HSTIDR = HSTIDR_RSTIEC;
-    ready = true;
+    connected[rhport] = true;
     return true;
   }
 
@@ -460,8 +461,8 @@ bool hcd_init(uint8_t rhport)
   USB_REG->HSTIER = HSTIER_DCONNIES | HSTIMR_RSTIE | HSTIER_HWUPIES;
   USB_REG->HSTIDR = HSTIDR_HSOFIEC; // interrupts not used, just count registers
 
-  ready = false;
 
+  connected[rhport] = false;
   return true;
 }
 
@@ -535,7 +536,7 @@ void hcd_port_reset_end(uint8_t rhport)
 bool hcd_port_connect_status(uint8_t rhport)
 {
   (void)rhport;
-  return ready;
+  return connected[rhport];
 }
 
 tusb_speed_t hcd_port_speed_get(uint8_t rhport)
