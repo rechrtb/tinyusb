@@ -53,26 +53,42 @@ TU_ATTR_ALWAYS_INLINE static inline void hw_exit_critical(volatile uint32_t *ato
 	__set_PRIMASK(*atomic);
 }
 
+
+TU_ATTR_ALWAYS_INLINE static inline void hw_cache_invalidate_prepare(uint8_t *addr, int32_t size)
+{
+  // if (SCB->CCR & SCB_CCR_DC_Msk)
+  // {
+  //   uint32_t* addr32 = (uint32_t *)tu_align((uint32_t)addr, 4);
+  //   size += 31;
+  //   SCB_CleanInvalidateDCache_by_Addr(addr32, size);
+  // }
+  // else
+  // {
+  //   __DSB();
+  //   __ISB();
+  // }
+}
+
 TU_ATTR_ALWAYS_INLINE static inline void hw_cache_invalidate(uint8_t *addr, int32_t size)
 {
-  if (SCB->CCR & SCB_CCR_DC_Msk)
-  {
-    uint32_t* addr32 = (uint32_t *)tu_align((uint32_t)addr, 4);
-    size += 31;
-    SCB_CleanInvalidateDCache_by_Addr(addr32, size);
-  }
-  else
-  {
-    __DSB();
-    __ISB();
-  }
+  // if (SCB->CCR & SCB_CCR_DC_Msk)
+  // {
+  //   uint32_t* addr32 = (uint32_t *)tu_align((uint32_t)addr, 4);
+  //   size += 31;
+  //   SCB_CleanInvalidateDCache_by_Addr(addr32, size);
+  // }
+  // else
+  // {
+  //   __DSB();
+  //   __ISB();
+  // }
 }
 
 TU_ATTR_ALWAYS_INLINE static inline void hw_cache_flush(uint8_t *addr, int32_t size)
 {
   // TODO implement
-  __DSB();
-  __ISB();
+  // __DSB();
+  // __ISB();
 }
 
 TU_ATTR_ALWAYS_INLINE static inline tusb_speed_t hw_port_speed_get(void)
