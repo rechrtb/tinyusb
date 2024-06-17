@@ -206,13 +206,14 @@ static void hw_pipe_abort(uint8_t rhport, uint8_t pipe)
     HSTPIPIDR_CTRL_TXSTPEC | HSTPIPIDR_BLK_RXSTALLDEC);
 }
 
-__attribute__ ((noinline)) static void  hw_pipes_reset(uint8_t rhport)
+__attribute__ ((noinline)) static void  hw_pipes_disable(uint8_t rhport)
 {
   (void)rhport;
-  for (int8_t i = EP_MAX - 1; i >= 0; i--) // go from high to low endpoints
+  for (int8_t i = 0; i < EP_MAX; i++) // go from high to low endpoints
   {
     hw_pipe_abort(rhport, i);
     USB_REG->HSTPIPCFG[i] = 0;
+    hw_pipe_enable(rhport, i, false);
   }
 }
 
@@ -403,10 +404,7 @@ static bool hw_handle_rh_int(uint8_t rhport)
     USBHS->USBHS_HSTCTRL &= ~USBHS_HSTCTRL_SPDCONF_Msk;
     USBHS->USBHS_HSTCTRL |= USBHS_HSTCTRL_SPDCONF_NORMAL;
 
-    __DSB();
-    __ISB();
-
-    hw_pipes_reset(rhport);
+    hw_pipes_disable(rhport);
 
     USB_REG->HSTICR = HSTICR_DCONNIC;
     USB_REG->HSTIER = HSTIER_DCONNIES;
@@ -463,7 +461,7 @@ bool hcd_init(uint8_t rhport)
 {
   (void)rhport;
   hcd_int_disable(rhport);
-  hw_pipes_reset(rhport);
+  hw_pipes_disable(rhport);
 
   // Set host mode
   USB_REG->CTRL &= ~(CTRL_UIMOD | CTRL_UID);
