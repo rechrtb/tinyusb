@@ -171,7 +171,7 @@ bool large_file(const char* drive_path)
 
 bool inquiry_complete_cb(uint8_t dev_addr, tuh_msc_complete_data_t const * cb_data)
 {
-  msc_cbw_t const* cbw = cb_data->cbw;
+  // msc_cbw_t const* cbw = cb_data->cbw;
   msc_csw_t const* csw = cb_data->csw;
 
   if (csw->status == 0)
@@ -181,8 +181,8 @@ bool inquiry_complete_cb(uint8_t dev_addr, tuh_msc_complete_data_t const * cb_da
     // printf("%.8s %.16s rev %.4s\r\n", inquiry_resp.vendor_id, inquiry_resp.product_id, inquiry_resp.product_rev);
 
     // Get capacity of device
-    uint32_t const block_count = tuh_msc_get_block_count(dev_addr, cbw->lun);
-    uint32_t const block_size = tuh_msc_get_block_size(dev_addr, cbw->lun);
+    // uint32_t const block_count = tuh_msc_get_block_count(dev_addr, cbw->lun);
+    // uint32_t const block_size = tuh_msc_get_block_size(dev_addr, cbw->lun);
 
     // printf("Disk Size: %lu MB\r\n", block_count / ((1024*1024)/block_size));
     // printf("Block Count = %lu, Block Size: %lu\r\n", block_count, block_size);
