@@ -73,9 +73,9 @@ static inline bool hw_pipe_enabled(uint8_t rhport, uint8_t pipe)
   return (USB_REG->HSTPIP & (HSTPIP_PEN0 << pipe));
 }
 
-static inline uint8_t hw_pipe_interrupt(uint8_t rhport, uint32_t isr, uint32_t mask)
+static inline uint8_t hw_pipe_interrupt(uint8_t rhport)
 {
-  return __builtin_ctz(((isr & mask) >> 8) | (1 << EP_MAX));
+  return __builtin_ctz((((USB_REG->HSTISR) & (USB_REG->HSTIMR)) >> 8) | (1 << EP_MAX));
 }
 
 static inline void hw_pipe_clear_reg(uint8_t rhport, uint8_t pipe, uint32_t mask)
@@ -199,21 +199,21 @@ static void hw_pipe_reset(uint8_t rhport, uint8_t pipe)
   USB_REG->HSTPIP &= ~mask; // remove pipe from reset
 }
 
+static void hw_pipe_abort(uint8_t rhport, uint8_t pipe)
+{
+  hw_pipe_reset(rhport, pipe);
+  hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_RXINEC | HSTPIPIDR_TXOUTEC |
+    HSTPIPIDR_CTRL_TXSTPEC | HSTPIPIDR_BLK_RXSTALLDEC);
+}
+
 __attribute__ ((noinline)) static void  hw_pipes_reset(uint8_t rhport)
 {
   (void)rhport;
   for (int8_t i = EP_MAX - 1; i >= 0; i--) // go from high to low endpoints
   {
-    hw_pipe_reset(rhport, i);
+    hw_pipe_abort(rhport, i);
     USB_REG->HSTPIPCFG[i] = 0;
   }
-}
-
-static void hw_pipe_abort(uint8_t rhport, uint8_t pipe)
-{
-  hw_pipe_reset(rhport, pipe);
-  hw_pipe_disable_reg(rhport, pipe, HSTPIPIMR_RXINE | HSTPIPIMR_TXOUTE |
-    HSTPIPIMR_CTRL_TXSTPE | HSTPIPIMR_BLK_RXSTALLDE);
 }
 
 static uint16_t hw_compute_psize(uint16_t size)
@@ -325,9 +325,9 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint32_t pipis
   return false;
 }
 
-static bool hw_handle_pipe_int(uint8_t rhport, uint32_t isr, uint32_t mask)
+static bool hw_handle_pipe_int(uint8_t rhport)
 {
-  uint8_t pipe = hw_pipe_interrupt(rhport, isr, mask);
+  uint8_t pipe = hw_pipe_interrupt(rhport);
 
   if (pipe < EP_MAX)
   {
@@ -337,38 +337,43 @@ static bool hw_handle_pipe_int(uint8_t rhport, uint32_t isr, uint32_t mask)
     uint8_t dev_addr = hw_pipe_get_dev_addr(rhport, pipe);
     uint8_t ep_addr = hw_pipe_get_ep_addr(rhport, pipe);
 
-    static_assert(HSTPIPISR_CTRL_RXSTALLDI == HSTPIPISR_BLK_RXSTALLDI);
-    static_assert(HSTPIPISR_CTRL_RXSTALLDI == HSTPIPISR_INTRPT_RXSTALLDI);
-    static_assert(HSTPIPIMR_CTRL_RXSTALLDE == HSTPIPIMR_BLK_RXSTALLDE);
-    static_assert(HSTPIPIMR_CTRL_RXSTALLDE == HSTPIPIMR_INTRPT_RXSTALLDE);
-    if ((pipisr & HSTPIPISR_CTRL_RXSTALLDI) & (pipmsk & HSTPIPIMR_CTRL_RXSTALLDE))
+    bool handled = hw_handle_fifo_pipe_int(rhport, pipe, pipisr, pipmsk, dev_addr, ep_addr);
+
+    if (!handled)
     {
-      hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_RXSTALLDIC);
-      hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_RSTDTS);
-      hw_pipe_abort(rhport, pipe);
-      hcd_event_xfer_complete(dev_addr, ep_addr, 0, XFER_RESULT_STALLED, true);
-      return true;
+      static_assert(HSTPIPISR_CTRL_RXSTALLDI == HSTPIPISR_BLK_RXSTALLDI);
+      static_assert(HSTPIPISR_CTRL_RXSTALLDI == HSTPIPISR_INTRPT_RXSTALLDI);
+      static_assert(HSTPIPIMR_CTRL_RXSTALLDE == HSTPIPIMR_BLK_RXSTALLDE);
+      static_assert(HSTPIPIMR_CTRL_RXSTALLDE == HSTPIPIMR_INTRPT_RXSTALLDE);
+      if ((pipisr & HSTPIPISR_CTRL_RXSTALLDI) & (pipmsk & HSTPIPIMR_CTRL_RXSTALLDE))
+      {
+        hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_RXSTALLDIC);
+        hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_RSTDTS);
+        hw_pipe_abort(rhport, pipe);
+        hcd_event_xfer_complete(dev_addr, ep_addr, 0, XFER_RESULT_STALLED, true);
+        return true;
+      }
+
+      if ((pipisr & HSTPIPISR_PERRI) & (pipmsk & HSTPIPIMR_PERRE))
+      {
+        xfer_result_t res = (USB_REG->HSTPIPERR[pipe] & HSTPIPERR_TIMEOUT)
+                            ? XFER_RESULT_TIMEOUT : XFER_RESULT_FAILED;
+        hw_pipe_abort(rhport, pipe);
+        hcd_event_xfer_complete(dev_addr, ep_addr, 0, res, true);
+        return true;
+      }
     }
 
-    if ((pipisr & HSTPIPISR_PERRI) & (pipmsk & HSTPIPIMR_PERRE))
-    {
-      xfer_result_t res = (USB_REG->HSTPIPERR[pipe] & HSTPIPERR_TIMEOUT)
-                          ? XFER_RESULT_TIMEOUT : XFER_RESULT_FAILED;
-      hw_pipe_abort(rhport, pipe);
-      hcd_event_xfer_complete(dev_addr, ep_addr, 0, res, true);
-      return true;
-    }
-
-    return hw_handle_fifo_pipe_int(rhport, pipe, pipisr, pipmsk, dev_addr, ep_addr);
+    return handled;
   }
 
   return false;
 }
 
-static bool hw_handle_rh_int(uint8_t rhport, uint32_t isr, uint32_t mask)
+static bool hw_handle_rh_int(uint8_t rhport)
 {
   // Device reset
-  if ((isr & HSTISR_RSTI) & (mask & HSTIMR_RSTIE))
+  if (((USB_REG->HSTISR) & HSTISR_RSTI) & ((USB_REG->HSTIMR) & HSTIMR_RSTIE))
   {
     // Acknowledge device reset interrupt
     USB_REG->HSTICR = HSTICR_RSTIC;
@@ -381,7 +386,7 @@ static bool hw_handle_rh_int(uint8_t rhport, uint32_t isr, uint32_t mask)
   while (!(USB_REG->SR & SR_CLKUSABLE));
 
   // Device disconnection
-  if ((isr & HSTISR_DDISCI) & (mask & HSTIMR_DDISCIE))
+  if (((USB_REG->HSTISR) & HSTISR_DDISCI) & ((USB_REG->HSTIMR) & HSTIMR_DDISCIE))
   {
     // Acknowledge disconnection interrupt
     USB_REG->HSTICR = HSTICR_DDISCIC;
@@ -417,7 +422,7 @@ static bool hw_handle_rh_int(uint8_t rhport, uint32_t isr, uint32_t mask)
   }
 
   // Device connection
-  if ((isr & HSTISR_DCONNI) & (mask & HSTIMR_DCONNIE))
+  if (((USB_REG->HSTISR) & HSTISR_DCONNI) & ((USB_REG->HSTIMR) & HSTIMR_DCONNIE))
   {
     // Acknowledge connection interrupt
     USB_REG->HSTICR |= HSTICR_DCONNIC;
@@ -436,9 +441,9 @@ static bool hw_handle_rh_int(uint8_t rhport, uint32_t isr, uint32_t mask)
   }
 
   // Host wakeup
-  if (((isr & HSTISR_HWUPI) & (mask & HSTIMR_HWUPIE))||
-      ((isr & HSTISR_RSMEDI) & (mask & HSTIMR_RSMEDIE))||
-      ((isr & HSTISR_RXRSMI) & (mask & HSTIMR_RXRSMIE)))
+  if ((((USB_REG->HSTISR) & HSTISR_HWUPI) & ((USB_REG->HSTIMR) & HSTIMR_HWUPIE))||
+      (((USB_REG->HSTISR) & HSTISR_RSMEDI) & ((USB_REG->HSTIMR) & HSTIMR_RSMEDIE))||
+      (((USB_REG->HSTISR) & HSTISR_RXRSMI) & ((USB_REG->HSTIMR) & HSTIMR_RXRSMIE)))
   {
     USB_REG->HSTICR = HSTICR_HWUPIC | HSTICR_RSMEDIC | HSTICR_RXRSMIC;
     USB_REG->HSTIDR = HSTIDR_HWUPIEC | HSTIDR_RSMEDIEC | HSTIDR_RXRSMIEC;
@@ -678,9 +683,6 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 
 void hcd_int_handler(uint8_t rhport)
 {
-  uint32_t isr = USB_REG->HSTISR;
-  uint32_t mask = USB_REG->HSTIMR;
-
   // Change to low power mode to only use the 48 MHz clock during low-speed
   if (hcd_port_speed_get(rhport) == TUSB_SPEED_LOW &&
       (!(USB_REG->HSTCTRL & USBHS_HSTCTRL_SPDCONF_Msk)))
@@ -688,16 +690,16 @@ void hcd_int_handler(uint8_t rhport)
     USB_REG->HSTCTRL |= HSTCTRL_SPDCONF_LOW_POWER;
   }
 
-  // Pipe processing & exception interrupts
-  if (isr & HSTISR_PEP_)
+  // Host global (root hub) processing interrupts
+  if ((USB_REG->HSTISR) & (HSTISR_RSTI | HSTISR_DCONNI | HSTISR_DDISCI | HSTISR_HWUPI | HSTISR_RXRSMI | HSTISR_RSMEDI))
   {
-    RET_IF_TRUE(hw_handle_pipe_int(rhport, isr, mask));
+    RET_IF_TRUE(hw_handle_rh_int(rhport));
   }
 
-  // Host global (root hub) processing interrupts
-  if (isr & (HSTISR_RSTI | HSTISR_DCONNI | HSTISR_DDISCI | HSTISR_HWUPI | HSTISR_RXRSMI | HSTISR_RSMEDI))
+  // Pipe processing & exception interrupts
+  if ((USB_REG->HSTISR) & HSTISR_PEP_)
   {
-    RET_IF_TRUE(hw_handle_rh_int(rhport, isr, mask));
+    RET_IF_TRUE(hw_handle_pipe_int(rhport));
   }
 
   assert(false); // error condition
