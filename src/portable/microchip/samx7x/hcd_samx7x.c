@@ -632,7 +632,7 @@ bool hcd_init(uint8_t rhport)
   // Enable USB
   USB_REG->CTRL = CTRL_USBE;
 
-	// Clear all interrupts that may have been set by a previous host mode
+  // Clear all interrupts that may have been set by a previous host mode
   USBHS->USBHS_HSTICR = USBHS_HSTICR_DCONNIC | USBHS_HSTICR_DDISCIC
       | USBHS_HSTICR_HSOFIC  | USBHS_HSTICR_HWUPIC
       | USBHS_HSTICR_RSMEDIC | USBHS_HSTICR_RSTIC
