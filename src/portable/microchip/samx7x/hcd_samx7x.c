@@ -154,12 +154,22 @@ static uint8_t hw_pipe_find(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr)
   return EP_MAX;
 }
 
-static uint8_t hw_pipe_find_free(uint8_t rhport)
+static uint16_t hw_pipe_get_size(uint16_t rhport, uint8_t pipe)
+{
+  (void) rhport;
+  return (1 << (((USB_REG->HSTPIPCFG[pipe] & HSTPIPCFG_PSIZE) >> HSTPIPCFG_PSIZE_Pos) + 3));
+}
+
+static uint8_t hw_pipe_find_free(uint8_t rhport, tusb_desc_endpoint_t const *ep_desc)
 {
   (void)rhport;
   for (uint8_t i = 0; i < EP_MAX; i++)
   {
-    if (!hw_pipe_enabled(rhport, i))
+    // Somewhat naive approach: find a pipe that's currently disabled, and has either not been allocated before
+    // or has an allocation fulfilling the size requested, if previously allocated. Perhaps in the future
+    // some form of algorithm to detect whether DPRAM can be deallocated is needed.
+    size_t sz = hw_pipe_get_size(rhport, i) * (((USB_REG->HSTPIPCFG[i] & HSTPIPCFG_PBK) >> HSTPIPCFG_PBK_Pos) + 1);
+    if (!hw_pipe_enabled(rhport, i) && (!(USB_REG->HSTPIPCFG[i] & HSTPIPCFG_ALLOC) || ep_desc->wMaxPacketSize <= sz))
     {
       return i;
     }
@@ -221,11 +231,6 @@ static uint16_t hw_compute_psize(uint16_t size)
   return 7;
 }
 
-static uint16_t hw_pipe_get_size(uint16_t rhport, uint8_t pipe)
-{
-  (void) rhport;
-  return (1 << (((USB_REG->HSTPIPCFG[pipe] & HSTPIPCFG_PSIZE) >> HSTPIPCFG_PSIZE_Pos) + 3));
-}
 
 static tusb_xfer_type_t hw_pipe_get_type(uint16_t rhport, uint8_t pipe)
 {
@@ -575,7 +580,7 @@ uint32_t hcd_frame_number(uint8_t rhport)
 bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const *ep_desc)
 {
   uint8_t pipe = 0;
-  pipe = hw_pipe_find_free(rhport);
+  pipe = hw_pipe_find_free(rhport, ep_desc);
   if (pipe >= EP_MAX)
   {
     return false;
