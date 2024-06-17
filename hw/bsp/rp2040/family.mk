@@ -3,6 +3,8 @@ PYOCD_TARGET = rp2040
 
 DEPS_SUBMODULES += hw/mcu/raspberry_pi/Pico-PIO-USB
 
+DEBUG := 1
+
 ifeq ($(DEBUG), 1)
 CMAKE_DEFSYM += -DCMAKE_BUILD_TYPE=Debug
 endif
