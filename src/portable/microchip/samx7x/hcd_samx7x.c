@@ -204,6 +204,7 @@ static void hw_pipe_reset(uint8_t rhport, uint8_t pipe)
 {
   (void)rhport;
   memset(&pipe_xfers[pipe], 0, sizeof(pipe_xfers[pipe]));
+  
   uint32_t mask = HSTPIP_PRST0 << pipe;
   USB_REG->HSTPIP |= mask;    // put pipe in reset
   USB_REG->HSTPIP &= ~mask; // remove pipe from reset
@@ -572,7 +573,7 @@ bool hcd_init(uint8_t rhport)
   // Enable USB
   USB_REG->CTRL = CTRL_USBE;
 
-	// Clear all interrupts that may have been set by a previous host mode
+  // Clear all interrupts that may have been set by a previous host mode
   USBHS->USBHS_HSTICR = USBHS_HSTICR_DCONNIC | USBHS_HSTICR_DDISCIC
       | USBHS_HSTICR_HSOFIC  | USBHS_HSTICR_HWUPIC
       | USBHS_HSTICR_RSMEDIC | USBHS_HSTICR_RSTIC
