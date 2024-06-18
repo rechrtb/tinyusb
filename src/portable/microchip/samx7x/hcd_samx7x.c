@@ -685,18 +685,17 @@ void hcd_int_handler(uint8_t rhport)
     USB_REG->HSTCTRL |= HSTCTRL_SPDCONF_LOW_POWER;
   }
 
-  // Host global (root hub) processing interrupts
-  if ((USB_REG->HSTISR) & (HSTISR_RSTI | HSTISR_DCONNI | HSTISR_DDISCI | HSTISR_HWUPI | HSTISR_RXRSMI | HSTISR_RSMEDI))
-  {
-    RET_IF_TRUE(hw_handle_rh_int(rhport));
-  }
-
   // Pipe processing & exception interrupts
   if ((USB_REG->HSTISR) & HSTISR_PEP_)
   {
     RET_IF_TRUE(hw_handle_pipe_int(rhport));
   }
 
+  // Host global (root hub) processing interrupts
+  if ((USB_REG->HSTISR) & (HSTISR_RSTI | HSTISR_DCONNI | HSTISR_DDISCI | HSTISR_HWUPI | HSTISR_RXRSMI | HSTISR_RSMEDI))
+  {
+    RET_IF_TRUE(hw_handle_rh_int(rhport));
+  }
   assert(false); // error condition
 }
 
