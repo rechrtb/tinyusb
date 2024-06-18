@@ -62,7 +62,6 @@ typedef struct
   uint8_t *buffer;
   uint16_t total;
   uint16_t done;
-  uint16_t current;
 } hw_pipe_xfer_t;
 
 static hw_pipe_xfer_t pipe_xfers[EP_MAX];
@@ -241,22 +240,18 @@ static tusb_xfer_type_t hw_pipe_get_type(uint16_t rhport, uint8_t pipe)
 
 static bool hw_pipe_prepare_out(uint8_t rhport, uint8_t pipe)
 {
-  if (pipe_xfers[pipe].total)
+  uint32_t remain = pipe_xfers[pipe].total - pipe_xfers[pipe].done;
+  uint16_t pipe_size = hw_pipe_get_size(rhport, pipe);
+
+  uint32_t next = remain < pipe_size ? remain : pipe_size;
+
+  if (next)
   {
-    uint16_t remain = - hw_pipe_bytes(rhport, pipe);
-    pipe_xfers[pipe].done += pipe_xfers[pipe].current - remain;
-
-    if (pipe_xfers[pipe].done < pipe_xfers[pipe].total)
-    {
-      uint16_t pipe_left = hw_pipe_get_size(rhport, pipe) - remain;
-      uint16_t buffer_left = pipe_xfers[pipe].total - pipe_xfers[pipe].done;
-      pipe_xfers[pipe].current = pipe_left < buffer_left ? pipe_left : buffer_left;
-
-      uint8_t *dst = PEP_GET_FIFO_PTR(pipe, 8) + remain;
-      uint8_t *src = pipe_xfers[pipe].buffer + pipe_xfers[pipe].done;
-      memcpy(dst, src, pipe_xfers[pipe].current);
-      return true;
-    }
+    uint8_t *dst = PEP_GET_FIFO_PTR(pipe, 8);
+    uint8_t *src = pipe_xfers[pipe].buffer + pipe_xfers[pipe].done;
+    memcpy(dst, src, next);
+    pipe_xfers[pipe].done += next;
+    return true;
   }
   return false;
 }
@@ -651,7 +646,6 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
   pipe_xfers[pipe].buffer = buffer;
   pipe_xfers[pipe].total = buflen;
   pipe_xfers[pipe].done = 0;
-  pipe_xfers[pipe].current = 0;
 
   if (hw_pipe_get_type(rhport, pipe) == TUSB_XFER_CONTROL) // control pipes are bi-directional, set correct token
   {
