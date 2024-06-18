@@ -517,10 +517,7 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   // Copy setup data to USB buffer
   const uint8_t *src = setup_packet;
   uint8_t *dst = PEP_GET_FIFO_PTR(pipe, 8);
-  for (size_t i = 0; i < 8; i++)
-  {
-    *dst++ = *src++;
-  }
+  memcpy(dst, src, 8);
   // Enable setup token sent interrupt
   hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_CTRL_TXSTPES);
   __DSB();
