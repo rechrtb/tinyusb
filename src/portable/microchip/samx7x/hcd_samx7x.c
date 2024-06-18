@@ -276,10 +276,13 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
   {
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_RXINIC | HSTPIPICR_SHORTPACKETIC);
 
-    // In case of low USB speed and with a high CPU frequency,
-    // a ACK from host can be always running on USB line
-    // then wait end of ACK on IN pipe.
-    while (!(USB_REG->HSTPIPIMR[pipe] & HSTPIPIMR_PFREEZE));
+    if (hw_pipe_get_type(rhport, pipe) == TUSB_XFER_CONTROL)
+    {
+      // In case of low USB speed and with a high CPU frequency,
+      // a ACK from host can be always running on USB line
+      // then wait end of ACK on IN pipe.
+      while (!(USB_REG->HSTPIPIMR[pipe] & HSTPIPIMR_PFREEZE));
+    }
 
     uint32_t rxed = hw_pipe_bytes(rhport, pipe);
 
@@ -294,7 +297,12 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
 
     if (pipe_xfers[pipe].done >= pipe_xfers[pipe].total || rxed < hw_pipe_get_size(rhport, pipe))
     {
+      hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
       hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_RXINEC | HSTPIPIDR_SHORTPACKETIEC);
+      if (hw_pipe_get_type(rhport, pipe) != TUSB_XFER_CONTROL)
+      {
+        USB_REG->HSTPIPINRQ[pipe] &= ~HSTPIPINRQ_INMODE;
+      }
       hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
     }
 
@@ -653,6 +661,11 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 
   if (ep_addr & TUSB_DIR_IN_MASK)
   {
+    if (hw_pipe_get_type(rhport, pipe) != TUSB_XFER_CONTROL)
+    {
+      USB_REG->HSTPIPINRQ[pipe] |= HSTPIPINRQ_INMODE;
+    }
+
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_RXINIC | HSTPIPICR_SHORTPACKETIC);
     hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_RXINES | HSTPIPIER_SHORTPACKETIES);
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
