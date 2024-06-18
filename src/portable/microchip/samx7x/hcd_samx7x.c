@@ -261,11 +261,11 @@ static bool hw_pipe_prepare_out(uint8_t rhport, uint8_t pipe)
   return false;
 }
 
-static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint32_t pipisr, uint32_t pipmsk, uint8_t dev_addr, uint8_t ep_addr)
+static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_addr, uint8_t ep_addr)
 {
   static_assert(HSTPIPISR_CTRL_TXSTPI == HSTPIPISR_BLK_TXSTPI);
   static_assert(HSTPIPIMR_CTRL_TXSTPE == HSTPIPIMR_BLK_TXSTPE);
-  if ((pipisr & HSTPIPISR_CTRL_TXSTPI) & (pipmsk & HSTPIPIMR_CTRL_TXSTPE))
+  if (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_CTRL_TXSTPI) & ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_CTRL_TXSTPE))
   {
     hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
     // Clear and disable setup packet interrupt
@@ -276,7 +276,7 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint32_t pipis
     return true;
   }
 
-  if ((pipisr & HSTPIPISR_RXINI) & (pipmsk & HSTPIPIMR_RXINE))
+  if (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_RXINI) & ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_RXINE))
   {
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_RXINIC);
 
@@ -305,7 +305,7 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint32_t pipis
     return true;
   }
 
-  if ((pipisr & HSTPIPISR_TXOUTI) & (pipmsk & HSTPIPIMR_TXOUTE))
+  if (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_TXOUTI) & ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_TXOUTE))
   {
     // Clear transmit interrupt
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
@@ -332,13 +332,10 @@ static bool hw_handle_pipe_int(uint8_t rhport)
 
   if (pipe < EP_MAX)
   {
-    uint32_t pipisr = USB_REG->HSTPIPISR[pipe];
-    uint32_t pipmsk = USB_REG->HSTPIPIMR[pipe];
-
     uint8_t dev_addr = hw_pipe_get_dev_addr(rhport, pipe);
     uint8_t ep_addr = hw_pipe_get_ep_addr(rhport, pipe);
 
-    bool handled = hw_handle_fifo_pipe_int(rhport, pipe, pipisr, pipmsk, dev_addr, ep_addr);
+    bool handled = hw_handle_fifo_pipe_int(rhport, pipe, dev_addr, ep_addr);
 
     if (!handled)
     {
@@ -346,7 +343,7 @@ static bool hw_handle_pipe_int(uint8_t rhport)
       static_assert(HSTPIPISR_CTRL_RXSTALLDI == HSTPIPISR_INTRPT_RXSTALLDI);
       static_assert(HSTPIPIMR_CTRL_RXSTALLDE == HSTPIPIMR_BLK_RXSTALLDE);
       static_assert(HSTPIPIMR_CTRL_RXSTALLDE == HSTPIPIMR_INTRPT_RXSTALLDE);
-      if ((pipisr & HSTPIPISR_CTRL_RXSTALLDI) & (pipmsk & HSTPIPIMR_CTRL_RXSTALLDE))
+      if (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_CTRL_RXSTALLDI) & ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_CTRL_RXSTALLDE))
       {
         hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_RXSTALLDIC);
         hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_RSTDTS);
@@ -355,7 +352,7 @@ static bool hw_handle_pipe_int(uint8_t rhport)
         return true;
       }
 
-      if ((pipisr & HSTPIPISR_PERRI) & (pipmsk & HSTPIPIMR_PERRE))
+      if (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_PERRI) & ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_PERRE))
       {
         xfer_result_t res = (USB_REG->HSTPIPERR[pipe] & HSTPIPERR_TIMEOUT)
                             ? XFER_RESULT_TIMEOUT : XFER_RESULT_FAILED;
