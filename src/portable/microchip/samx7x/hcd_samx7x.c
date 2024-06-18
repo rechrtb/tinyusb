@@ -260,7 +260,7 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
 {
   static_assert(HSTPIPISR_CTRL_TXSTPI == HSTPIPISR_BLK_TXSTPI);
   static_assert(HSTPIPIMR_CTRL_TXSTPE == HSTPIPIMR_BLK_TXSTPE);
-  if (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_CTRL_TXSTPI) & ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_CTRL_TXSTPE))
+  if (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_CTRL_TXSTPI) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_CTRL_TXSTPE))
   {
     hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
     // Clear and disable setup packet interrupt
@@ -271,7 +271,7 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
     return true;
   }
 
-  if (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_RXINI) & ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_RXINE))
+  if (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_RXINI) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_RXINE))
   {
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_RXINIC);
 
@@ -300,7 +300,7 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
     return true;
   }
 
-  if (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_TXOUTI) & ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_TXOUTE))
+  if (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_TXOUTI) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_TXOUTE))
   {
     // Clear transmit interrupt
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
@@ -347,7 +347,7 @@ static bool hw_handle_pipe_int(uint8_t rhport)
         return true;
       }
 
-      if (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_PERRI) & ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_PERRE))
+      if (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_PERRI) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_PERRE))
       {
         xfer_result_t res = (USB_REG->HSTPIPERR[pipe] & HSTPIPERR_TIMEOUT)
                             ? XFER_RESULT_TIMEOUT : XFER_RESULT_FAILED;
@@ -366,7 +366,7 @@ static bool hw_handle_pipe_int(uint8_t rhport)
 static bool hw_handle_rh_int(uint8_t rhport)
 {
   // Device reset
-  if (((USB_REG->HSTISR) & HSTISR_RSTI) & ((USB_REG->HSTIMR) & HSTIMR_RSTIE))
+  if (((USB_REG->HSTISR) & HSTISR_RSTI) && ((USB_REG->HSTIMR) & HSTIMR_RSTIE))
   {
     // Acknowledge device reset interrupt
     USB_REG->HSTICR = HSTICR_RSTIC;
@@ -379,7 +379,7 @@ static bool hw_handle_rh_int(uint8_t rhport)
   while (!(USB_REG->SR & SR_CLKUSABLE));
 
   // Device disconnection
-  if (((USB_REG->HSTISR) & HSTISR_DDISCI) & ((USB_REG->HSTIMR) & HSTIMR_DDISCIE))
+  if (((USB_REG->HSTISR) & HSTISR_DDISCI) && ((USB_REG->HSTIMR) & HSTIMR_DDISCIE))
   {
     // Acknowledge disconnection interrupt
     USB_REG->HSTICR = HSTICR_DDISCIC;
@@ -412,7 +412,7 @@ static bool hw_handle_rh_int(uint8_t rhport)
   }
 
   // Device connection
-  if (((USB_REG->HSTISR) & HSTISR_DCONNI) & ((USB_REG->HSTIMR) & HSTIMR_DCONNIE))
+  if (((USB_REG->HSTISR) & HSTISR_DCONNI) && ((USB_REG->HSTIMR) & HSTIMR_DCONNIE))
   {
     // Acknowledge connection interrupt
     USB_REG->HSTICR |= HSTICR_DCONNIC;
@@ -431,9 +431,9 @@ static bool hw_handle_rh_int(uint8_t rhport)
   }
 
   // Host wakeup
-  if ((((USB_REG->HSTISR) & HSTISR_HWUPI) & ((USB_REG->HSTIMR) & HSTIMR_HWUPIE))||
-      (((USB_REG->HSTISR) & HSTISR_RSMEDI) & ((USB_REG->HSTIMR) & HSTIMR_RSMEDIE))||
-      (((USB_REG->HSTISR) & HSTISR_RXRSMI) & ((USB_REG->HSTIMR) & HSTIMR_RXRSMIE)))
+  if ((((USB_REG->HSTISR) & HSTISR_HWUPI) && ((USB_REG->HSTIMR) & HSTIMR_HWUPIE))||
+      (((USB_REG->HSTISR) & HSTISR_RSMEDI) && ((USB_REG->HSTIMR) & HSTIMR_RSMEDIE))||
+      (((USB_REG->HSTISR) & HSTISR_RXRSMI) && ((USB_REG->HSTIMR) & HSTIMR_RXRSMIE)))
   {
     USB_REG->HSTICR = HSTICR_HWUPIC | HSTICR_RSMEDIC | HSTICR_RXRSMIC;
     USB_REG->HSTIDR = HSTIDR_HWUPIEC | HSTIDR_RSMEDIEC | HSTIDR_RXRSMIEC;
