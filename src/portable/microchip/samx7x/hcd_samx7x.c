@@ -251,8 +251,13 @@ static bool hw_pipe_prepare_out(uint8_t rhport, uint8_t pipe)
     uint8_t *src = pipe_xfers[pipe].buffer + pipe_xfers[pipe].done;
     memcpy(dst, src, next);
     pipe_xfers[pipe].done += next;
+  }
+
+  if (pipe_xfers[pipe].done >= pipe_xfers[pipe].total || next < pipe_size)
+  {
     return true;
   }
+
   return false;
 }
 
@@ -303,6 +308,11 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
       {
         USB_REG->HSTPIPINRQ[pipe] &= ~HSTPIPINRQ_INMODE;
       }
+
+      if (hw_pipe_get_type(rhport, pipe) != TUSB_XFER_CONTROL)
+      {
+        USB_REG->HSTIER &= ~((HSTISR_PEP_0) << pipe);
+      }
       hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
     }
 
@@ -314,16 +324,25 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
   {
     // Clear transmit interrupt
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
-    if(hw_pipe_prepare_out(rhport, pipe))
+    bool end = hw_pipe_prepare_out(rhport, pipe);
+    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
+
+    if (end)
     {
-      // Still more data to send
-      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
-      return true;
+      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_TXOUTEC);
+      hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_NBUSYBKES);
     }
-    // Freeze the pipe
+    return true;
+  }
+
+  if ((((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_NBUSYBK) == 0) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_NBUSYBKE))
+  {
     hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
-    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_TXOUTEC);
-    // Notify the USB stack
+    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC);
+    if (hw_pipe_get_type(rhport, pipe) != TUSB_XFER_CONTROL)
+    {
+      USB_REG->HSTIER &= ~((HSTISR_PEP_0) << pipe);
+    }
     hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
     return true;
   }
@@ -664,6 +683,10 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
   {
     hw_pipe_set_token(rhport, pipe, (ep_addr & TUSB_DIR_IN_MASK) ? HSTPIPCFG_PTOKEN_IN : HSTPIPCFG_PTOKEN_OUT);
   }
+  else
+  {
+    USB_REG->HSTIER |= (HSTISR_PEP_0) << pipe;
+  }
 
   if (ep_addr & TUSB_DIR_IN_MASK)
   {
@@ -679,8 +702,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
   else
   {
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
-    hw_pipe_clear_reg(rhport, pipe, HSTPIPISR_TXOUTI);
-    hw_pipe_prepare_out(rhport, pipe);
+    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC);
     hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_TXOUTES);
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
   }
