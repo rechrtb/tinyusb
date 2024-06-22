@@ -219,8 +219,8 @@ __attribute__ ((noinline)) static void  hw_pipes_disable(uint8_t rhport)
 static uint16_t hw_compute_psize(uint16_t size)
 {
   static const uint16_t sizes[] = {8, 16, 32, 64, 128, 256, 512, 1024};
-  uint8_t i;
-  for (i = 0; i < sizeof(sizes) / sizeof(uint16_t); i++)
+  uint8_t i = 0;
+  for (; i < sizeof(sizes) / sizeof(uint16_t); i++)
   {
     /* Size should be exactly PSIZE values */
     if (size <= sizes[i])
@@ -506,8 +506,14 @@ void hcd_device_close(uint8_t rhport, uint8_t dev_addr)
   {
     if (hw_pipe_enabled(rhport, i) && hw_pipe_get_dev_addr(rhport, i) == dev_addr)
     {
-      hw_pipe_reset(rhport, i);
       hw_pipe_enable(rhport, i, false);
+      // Dealloc if this pipe is last, or next pipe is not allocated. If next pipe
+      // is allocated, do not deallocate this one as that will cause that pipe's FIFO
+      // area to slide - which may lead to data loss.
+      if (i == EP_MAX - 1 || !(USB_REG->HSTPIPCFG[i + 1] & HSTPIPCFG_ALLOC))
+      {
+        USB_REG->HSTPIPCFG[i] &= ~HSTPIPCFG_ALLOC;
+      }
     }
   }
 }
