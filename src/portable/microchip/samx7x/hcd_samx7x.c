@@ -307,11 +307,7 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
       if (hw_pipe_get_type(rhport, pipe) != TUSB_XFER_CONTROL)
       {
         USB_REG->HSTPIPINRQ[pipe] &= ~HSTPIPINRQ_INMODE;
-      }
-
-      if (hw_pipe_get_type(rhport, pipe) != TUSB_XFER_CONTROL)
-      {
-        USB_REG->HSTIER &= ~((HSTISR_PEP_0) << pipe);
+        USB_REG->HSTIDR = ((HSTISR_PEP_0) << pipe);
       }
       hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
     }
@@ -341,7 +337,7 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC);
     if (hw_pipe_get_type(rhport, pipe) != TUSB_XFER_CONTROL)
     {
-      USB_REG->HSTIER &= ~((HSTISR_PEP_0) << pipe);
+      USB_REG->HSTIDR = ((HSTISR_PEP_0) << pipe);
     }
     hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
     return true;
@@ -657,7 +653,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
     // configure pipe-related interrupts
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_RXSTALLDIC | HSTPIPICR_OVERFIC | HSTPIPISR_PERRI | HSTPIPICR_INTRPT_UNDERFIC);
     hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_CTRL_RXSTALLDES | HSTPIPIER_OVERFIES | HSTPIPIER_PERRES);
-    USB_REG->HSTIER |= (HSTISR_PEP_0) << pipe;
+    USB_REG->HSTIER = (HSTISR_PEP_0) << pipe;
 
     return true;
   }
@@ -685,7 +681,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
   }
   else
   {
-    USB_REG->HSTIER |= (HSTISR_PEP_0) << pipe;
+    USB_REG->HSTIER = (HSTISR_PEP_0) << pipe;
   }
 
   if (ep_addr & TUSB_DIR_IN_MASK)
