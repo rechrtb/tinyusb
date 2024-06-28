@@ -628,6 +628,28 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
   uint16_t size = ep_desc->wMaxPacketSize & (PIPE_MAX_PACKET_SIZE - 1); // mask with max packet size the
   cfg |= (HSTPIPCFG_PSIZE & ((uint32_t)hw_compute_psize(size) << HSTPIPCFG_PSIZE_Pos)); // hardware supports
 
+  uint8_t interval = ep_desc->bInterval;
+
+  if (hcd_port_speed_get(rhport) == TUSB_SPEED_HIGH && (type == TUSB_XFER_INTERRUPT || type == TUSB_XFER_ISOCHRONOUS))
+  {
+    if (interval > 16)
+    {
+      interval = 16;
+    }
+    uint16_t ms = 1 << (interval - 1);
+    interval = ms > 0xFF ? 0xFF : ms;
+  }
+  // Enabling this block seems to not make some flash drives work
+  // else
+  // {
+    // if (type == TUSB_XFER_BULK && !in && interval < 1)
+    // {
+    //   interval = 1;
+    // }
+  // }
+
+  cfg |= interval << HSTPIPCFG_INTFRQ_Pos;
+
   cfg |= HSTPIPCFG_PBK_1_BANK;
 #if USE_DUAL_BANK
   if (type == TUSB_XFER_ISOCHRONOUS || type == TUSB_XFER_BULK)
