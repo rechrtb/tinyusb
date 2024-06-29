@@ -201,16 +201,16 @@ static void hw_pipe_reset(uint8_t rhport, uint8_t pipe)
 static void hw_pipe_abort(uint8_t rhport, uint8_t pipe)
 {
   hw_pipe_reset(rhport, pipe);
-  hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_RXINEC | HSTPIPIDR_TXOUTEC |
-    HSTPIPIDR_CTRL_TXSTPEC | HSTPIPIDR_BLK_RXSTALLDEC);
+  hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_RXINEC | HSTPIPIDR_SHORTPACKETIEC | HSTPIPIDR_TXOUTEC | HSTPIPIDR_CTRL_TXSTPEC | HSTPIPIDR_BLK_RXSTALLDEC);
 }
 
 __attribute__ ((noinline)) static void  hw_pipes_disable(uint8_t rhport)
 {
   (void)rhport;
-  for (int8_t i = 0; i < EP_MAX; i++) // go from high to low endpoints
+  for (int8_t i = EP_MAX - 1; i >= 0; i--) // go from high to low endpoints
   {
     hw_pipe_abort(rhport, i);
+    USB_REG->HSTIDR = ((HSTISR_PEP_0) << i);
     USB_REG->HSTPIPCFG[i] = 0;
     hw_pipe_enable(rhport, i, false);
   }
