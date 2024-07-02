@@ -56,7 +56,6 @@ static_assert(TUSB_XFER_CONTROL == HSTPIPCFG_PTYPE_CTRL_Val &&
 #define RET_IF_TRUE(fn)      if (fn) { return; }
 
 static volatile bool connected[1] = { false };
-
 typedef struct
 {
   uint8_t *buffer;
@@ -196,6 +195,15 @@ static void hw_pipe_reset(uint8_t rhport, uint8_t pipe)
   uint32_t mask = HSTPIP_PRST0 << pipe;
   USB_REG->HSTPIP |= mask;    // put pipe in reset
   USB_REG->HSTPIP &= ~mask; // remove pipe from reset
+}
+
+static void hw_pipes_reset(uint8_t rhport)
+{
+  (void)rhport;
+  for (int8_t i = 0; i < EP_MAX; i++) // go from high to low endpoints
+  {
+    hw_pipe_reset(rhport, i);
+  }
 }
 
 static void hw_pipe_abort(uint8_t rhport, uint8_t pipe)
@@ -393,10 +401,13 @@ static bool hw_handle_rh_int(uint8_t rhport)
   // Device reset
   if (((USB_REG->HSTISR) & HSTISR_RSTI) && ((USB_REG->HSTIMR) & HSTIMR_RSTIE))
   {
+    connected[rhport] = true;
+
     // Acknowledge device reset interrupt
     USB_REG->HSTICR = HSTICR_RSTIC;
     USB_REG->HSTIDR = HSTIDR_RSTIEC;
-    connected[rhport] = true;
+
+    hw_pipes_reset(rhport);
     return true;
   }
 
@@ -406,6 +417,8 @@ static bool hw_handle_rh_int(uint8_t rhport)
   // Device disconnection
   if (((USB_REG->HSTISR) & HSTISR_DDISCI) && ((USB_REG->HSTIMR) & HSTIMR_DDISCIE))
   {
+    connected[rhport] = false;
+
     // Acknowledge disconnection interrupt
     USB_REG->HSTICR = HSTICR_DDISCIC;
     USB_REG->HSTIDR = HSTIDR_DDISCIEC;
@@ -413,23 +426,12 @@ static bool hw_handle_rh_int(uint8_t rhport)
     // Disable reset, in case of disconnection during reset
     USB_REG->HSTCTRL &= ~HSTCTRL_RESET;
 
-    // Disable wakeup/resumes interrupts,
-    // in case of disconnection during suspend mode
-    USB_REG->HSTIDR = HSTIDR_HWUPIEC | HSTIDR_RSMEDIEC | HSTIDR_RXRSMIEC;
-
     // Restore host speed detection in case the disconnected LS device
     USBHS->USBHS_HSTCTRL &= ~USBHS_HSTCTRL_SPDCONF_Msk;
     USBHS->USBHS_HSTCTRL |= USBHS_HSTCTRL_SPDCONF_NORMAL;
 
-    hw_pipes_disable(rhport);
-
     USB_REG->HSTICR = HSTICR_DCONNIC;
     USB_REG->HSTIER = HSTIER_DCONNIES;
-
-    USB_REG->HSTICR = HSTICR_HWUPIC;
-    USB_REG->HSTIER = HSTIER_HWUPIES;
-
-    connected[rhport] = false;
 
     // Send the event to tinyUSB
     hcd_event_device_remove(rhport, true);
@@ -440,8 +442,8 @@ static bool hw_handle_rh_int(uint8_t rhport)
   if (((USB_REG->HSTISR) & HSTISR_DCONNI) && ((USB_REG->HSTIMR) & HSTIMR_DCONNIE))
   {
     // Acknowledge connection interrupt
-    USB_REG->HSTICR |= HSTICR_DCONNIC;
-    USB_REG->HSTIDR |= HSTIDR_DCONNIEC;
+    USB_REG->HSTICR = HSTICR_DCONNIC;
+    USB_REG->HSTIDR = HSTIDR_DCONNIEC;
 
     // Prepare for disconnection interrupt
     USB_REG->HSTICR = HSTICR_DDISCIC;
@@ -455,22 +457,6 @@ static bool hw_handle_rh_int(uint8_t rhport)
     return true;
   }
 
-  // Host wakeup
-  if ((((USB_REG->HSTISR) & HSTISR_HWUPI) && ((USB_REG->HSTIMR) & HSTIMR_HWUPIE))||
-      (((USB_REG->HSTISR) & HSTISR_RSMEDI) && ((USB_REG->HSTIMR) & HSTIMR_RSMEDIE))||
-      (((USB_REG->HSTISR) & HSTISR_RXRSMI) && ((USB_REG->HSTIMR) & HSTIMR_RXRSMIE)))
-  {
-    USB_REG->HSTICR = HSTICR_HWUPIC | HSTICR_RSMEDIC | HSTICR_RXRSMIC;
-    USB_REG->HSTIDR = HSTIDR_HWUPIEC | HSTIDR_RSMEDIEC | HSTIDR_RXRSMIEC;
-
-    // Enable SOF generation
-    USB_REG->HSTCTRL |= HSTCTRL_SOFE;
-
-    // Enable device detection
-    USB_REG->HSTIER = HSTIER_DCONNIES;
-    return true;
-  }
-
   return false;
 }
 
@@ -478,7 +464,6 @@ bool hcd_init(uint8_t rhport)
 {
   (void)rhport;
   hcd_int_disable(rhport);
-  hw_pipes_disable(rhport);
 
   // Set host mode
   USB_REG->CTRL &= ~(CTRL_UIMOD | CTRL_UID);
@@ -491,7 +476,7 @@ bool hcd_init(uint8_t rhport)
   USBHS->USBHS_HSTCTRL |= USBHS_HSTCTRL_SPDCONF_NORMAL;
 
   // Force re-connection on initialization
-  USB_REG->HSTIFR |= HSTIMR_DDISCIE | HSTIMR_HWUPIE;
+  USB_REG->HSTIFR |= HSTIMR_DDISCIE;
 
   // Enable USB
   USB_REG->CTRL = CTRL_USBE;
@@ -501,7 +486,6 @@ bool hcd_init(uint8_t rhport)
       | USBHS_HSTICR_HSOFIC  | USBHS_HSTICR_HWUPIC
       | USBHS_HSTICR_RSMEDIC | USBHS_HSTICR_RSTIC
       | USBHS_HSTICR_RXRSMIC;
-
 
   USB_REG->CTRL |= CTRL_VBUSHWC; // datasheet indicates must be set to 1
   USB_REG->SFR |= SFR_VBUSRQS;
@@ -574,7 +558,7 @@ void hcd_port_reset(uint8_t rhport)
 {
   (void)rhport;
   // Enable reset sent interrupt
-  USB_REG->HSTIER |= HSTIER_RSTIES;
+  USB_REG->HSTIER = HSTIER_RSTIES;
   // Send reset
   USB_REG->HSTCTRL |= HSTCTRL_RESET;
 }
@@ -748,10 +732,11 @@ void hcd_int_handler(uint8_t rhport)
   }
 
   // Host global (root hub) processing interrupts
-  if ((USB_REG->HSTISR) & (HSTISR_RSTI | HSTISR_DCONNI | HSTISR_DDISCI | HSTISR_HWUPI | HSTISR_RXRSMI | HSTISR_RSMEDI))
+  if ((USB_REG->HSTISR) & (HSTISR_RSTI | HSTISR_DCONNI | HSTISR_DDISCI))
   {
     RET_IF_TRUE(hw_handle_rh_int(rhport));
   }
+
   assert(false); // error condition
 }
 
