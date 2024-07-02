@@ -623,20 +623,8 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
     uint16_t ms = 1 << (interval - 1);
     interval = ms > 0xFF ? 0xFF : ms;
   }
-  else
-  {
-    if (type == TUSB_XFER_BULK && !in && interval < 1)
-    {
-      interval = 1;
-    }
-  }
 
   cfg |= interval << HSTPIPCFG_INTFRQ_Pos;
-
-  if (hcd_port_speed_get(rhport) == TUSB_SPEED_HIGH && (type == TUSB_XFER_CONTROL || (type == TUSB_XFER_BULK && !in)))
-  {
-    cfg |= HSTPIPCFG_CTRL_BULK_PINGEN;
-  }
 
   cfg |= HSTPIPCFG_PBK_1_BANK;
 #if USE_DUAL_BANK
