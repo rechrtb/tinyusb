@@ -738,8 +738,10 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
   return true;
 }
 
-void hcd_int_handler(uint8_t rhport)
+void hcd_int_handler(uint8_t rhport, bool in_isr)
 {
+  (void) in_isr;
+
   // Change to low power mode to only use the 48 MHz clock during low-speed
   if (hcd_port_speed_get(rhport) == TUSB_SPEED_LOW &&
       (!(USB_REG->HSTCTRL & USBHS_HSTCTRL_SPDCONF_Msk)))
