@@ -55,7 +55,14 @@ static_assert(TUSB_XFER_CONTROL == HSTPIPCFG_PTYPE_CTRL_Val &&
 
 #define RET_IF_TRUE(fn)      if (fn) { return; }
 
-static volatile bool connected[1] = { false };
+typedef enum {
+  HCD_IDLE,
+  HCD_ATTACHING,
+  HCD_RESETTING,
+  HCD_CONNECTED
+} hcd_status_t;
+
+static volatile hcd_status_t status[1] = { HCD_IDLE };
 typedef struct
 {
   uint8_t *buffer;
@@ -65,7 +72,7 @@ typedef struct
 
 static hw_pipe_xfer_t pipe_xfers[EP_MAX];
 
-static volatile uint8_t events[1000];
+static volatile uint8_t events[1500];
 static volatile uint16_t events_idx = 0;
 
 static inline bool hw_pipe_enabled(uint8_t rhport, uint8_t pipe)
@@ -418,7 +425,7 @@ static bool hw_handle_rh_int(uint8_t rhport)
   {
     events[events_idx++] = 1;
 
-    connected[rhport] = true;
+    status[rhport] = HCD_CONNECTED;
 
     // Acknowledge device reset interrupt
     USB_REG->HSTICR = HSTICR_RSTIC;
@@ -436,11 +443,9 @@ static bool hw_handle_rh_int(uint8_t rhport)
   {
     events[events_idx++] = 255;
 
-    connected[rhport] = false;
-
     // Acknowledge disconnection interrupt
-    USB_REG->HSTICR = HSTICR_DDISCIC;
-    USB_REG->HSTIDR = HSTIDR_DDISCIEC;
+    USB_REG->HSTICR = HSTICR_DDISCIC | HSTICR_HSOFIC;
+    USB_REG->HSTIDR = HSTIDR_DDISCIEC | HSTIDR_HSOFIEC;
 
     // Disable reset, in case of disconnection during reset
     USB_REG->HSTCTRL &= ~HSTCTRL_RESET;
@@ -452,8 +457,13 @@ static bool hw_handle_rh_int(uint8_t rhport)
     USB_REG->HSTICR = HSTICR_DCONNIC;
     USB_REG->HSTIER = HSTIER_DCONNIES;
 
-    // Send the event to tinyUSB
-    hcd_event_device_remove(rhport, true);
+    status[rhport] = HCD_IDLE;
+
+    if (hcd_port_connect_status(rhport))
+    {
+      // Send the event to tinyUSB
+      hcd_event_device_remove(rhport, true);
+    }
     return true;
   }
 
@@ -469,15 +479,15 @@ static bool hw_handle_rh_int(uint8_t rhport)
     USB_REG->HSTICR = HSTICR_DCONNIC;
     USB_REG->HSTIDR = HSTIDR_DCONNIEC;
 
-    // Enable SOF generation
+    // // Enable SOF generation and interrupts
     USB_REG->HSTCTRL |= HSTCTRL_SOFE;
+    USB_REG->HSTIER = HSTIER_HSOFIES;
 
     // Prepare for disconnection interrupt
     USB_REG->HSTICR = HSTICR_DDISCIC;
     USB_REG->HSTIER = HSTIER_DDISCIES;
 
-    // Send the event to TinyUSB
-    hcd_event_device_attach(rhport, true);
+    status[rhport] = HCD_ATTACHING;
     return true;
   }
 
@@ -499,8 +509,8 @@ bool hcd_init(uint8_t rhport)
   USBHS->USBHS_HSTCTRL &= ~USBHS_HSTCTRL_SPDCONF_Msk;
   USBHS->USBHS_HSTCTRL |= USBHS_HSTCTRL_SPDCONF_NORMAL;
 
-  // Force re-connection on initialization
-  USB_REG->HSTIFR |= HSTIMR_DDISCIE;
+  // // Force re-connection on initialization
+  // USB_REG->HSTIFR |= HSTIMR_DDISCIE;
 
   // Enable USB
   USB_REG->CTRL = CTRL_USBE;
@@ -517,8 +527,7 @@ bool hcd_init(uint8_t rhport)
   USB_REG->HSTIDR = HSTIDR_HSOFIEC; // interrupts not used, just count registers
 
   USB_REG->HSTIER = HSTIER_DCONNIES | HSTIER_RSTIES;
-
-  connected[rhport] = false;
+  status[rhport] = HCD_IDLE;
   return true;
 }
 
@@ -599,7 +608,7 @@ void hcd_port_reset_end(uint8_t rhport)
 bool hcd_port_connect_status(uint8_t rhport)
 {
   (void)rhport;
-  return connected[rhport];
+  return status[rhport] == HCD_CONNECTED;
 }
 
 tusb_speed_t hcd_port_speed_get(uint8_t rhport)
@@ -745,6 +754,22 @@ void hcd_int_handler(uint8_t rhport)
       (!(USB_REG->HSTCTRL & USBHS_HSTCTRL_SPDCONF_Msk)))
   {
     USB_REG->HSTCTRL |= HSTCTRL_SPDCONF_LOW_POWER;
+  }
+
+  // Pipe processing & exception interrupts
+  if (((USB_REG->HSTISR) & HSTISR_HSOFI) && ((USB_REG->HSTIMR) & HSTIMR_HSOFIE))
+  {
+    if (hcd_frame_number(rhport) > 100)
+    {
+      events[events_idx++] = 5;
+
+      USB_REG->HSTICR = HSTICR_HSOFIC;
+      USB_REG->HSTIDR = HSTIDR_HSOFIEC;
+
+      status[rhport] =  HCD_RESETTING;
+      hcd_event_device_attach(rhport, true);
+    }
+    return;
   }
 
   // Pipe processing & exception interrupts
