@@ -267,7 +267,12 @@ static bool hw_pipe_prepare_out(uint8_t rhport, uint8_t pipe)
   {
     uint8_t *dst = PEP_GET_FIFO_PTR(pipe, 8);
     uint8_t *src = pipe_xfers[pipe].buffer + pipe_xfers[pipe].done;
-    memcpy(dst, src, next);
+    for (uint32_t i = 0; i < next; i++)
+    {
+      *dst++ = *src++;
+    }
+    __DSB();
+    __ISB();
     pipe_xfers[pipe].done += next;
   }
 
@@ -317,7 +322,12 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
       // Copy data from FIFO to buffer
       uint8_t *src = PEP_GET_FIFO_PTR(pipe, 8);
       uint8_t *dst = pipe_xfers[pipe].buffer + pipe_xfers[pipe].done;
-      memcpy(dst, src, rxed);
+      for (uint32_t i = 0; i < rxed; i++)
+      {
+        *dst++ = *src++;
+      }
+      __DSB();
+      __ISB();
       pipe_xfers[pipe].done += rxed;
     }
 
@@ -568,7 +578,10 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   // Copy setup data to USB buffer
   const uint8_t *src = setup_packet;
   uint8_t *dst = PEP_GET_FIFO_PTR(pipe, 8);
-  memcpy(dst, src, 8);
+  for (int i = 0; i < 8; i++)
+  {
+    *dst++ = *src++;
+  }
   // Enable setup token sent interrupt
   hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_CTRL_TXSTPES);
   __DSB();
