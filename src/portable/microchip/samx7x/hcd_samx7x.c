@@ -201,10 +201,18 @@ static inline void hw_pipe_enable(uint8_t rhport, uint8_t pipe, bool enable)
 static void hw_pipe_reset(uint8_t rhport, uint8_t pipe)
 {
   (void)rhport;
-  memset(&pipe_xfers[pipe], 0, sizeof(pipe_xfers[pipe]));
+
+  // Reset pipe to stop transfer
   uint32_t mask = HSTPIP_PRST0 << pipe;
   USB_REG->HSTPIP |= mask;    // put pipe in reset
   USB_REG->HSTPIP &= ~mask; // remove pipe from reset
+
+  // Disable pipe interrupts
+  hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_RXINEC | HSTPIPIDR_SHORTPACKETIEC |
+    HSTPIPIDR_TXOUTEC | HSTPIPIDR_CTRL_TXSTPEC | HSTPIPIDR_BLK_RXSTALLDEC);
+
+  // Clear pipe context
+  memset(&pipe_xfers[pipe], 0, sizeof(pipe_xfers[pipe]));
 }
 
 static void hw_pipes_reset(uint8_t rhport)
@@ -213,24 +221,6 @@ static void hw_pipes_reset(uint8_t rhport)
   for (int8_t i = 0; i < EP_MAX; i++) // go from high to low endpoints
   {
     hw_pipe_reset(rhport, i);
-  }
-}
-
-static void hw_pipe_abort(uint8_t rhport, uint8_t pipe)
-{
-  hw_pipe_reset(rhport, pipe);
-  hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_RXINEC | HSTPIPIDR_SHORTPACKETIEC | HSTPIPIDR_TXOUTEC | HSTPIPIDR_CTRL_TXSTPEC | HSTPIPIDR_BLK_RXSTALLDEC);
-}
-
-__attribute__ ((noinline)) static void  hw_pipes_disable(uint8_t rhport)
-{
-  (void)rhport;
-  for (int8_t i = EP_MAX - 1; i >= 0; i--) // go from high to low endpoints
-  {
-    hw_pipe_abort(rhport, i);
-    USB_REG->HSTIDR = ((HSTISR_PEP_0) << i);
-    USB_REG->HSTPIPCFG[i] = 0;
-    hw_pipe_enable(rhport, i, false);
   }
 }
 
@@ -406,7 +396,7 @@ static bool hw_handle_pipe_int(uint8_t rhport)
         //events[events_idx++] = 41;
         hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_RXSTALLDIC);
         hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_RSTDTS);
-        hw_pipe_abort(rhport, pipe);
+        hw_pipe_reset(rhport, pipe);
         hcd_event_xfer_complete(dev_addr, ep_addr, 0, XFER_RESULT_STALLED, true);
         return true;
       }
@@ -416,7 +406,7 @@ static bool hw_handle_pipe_int(uint8_t rhport)
         //events[events_idx++] = 42;
         xfer_result_t res = (USB_REG->HSTPIPERR[pipe] & HSTPIPERR_TIMEOUT)
                             ? XFER_RESULT_TIMEOUT : XFER_RESULT_FAILED;
-        hw_pipe_abort(rhport, pipe);
+        hw_pipe_reset(rhport, pipe);
         hcd_event_xfer_complete(dev_addr, ep_addr, 0, res, true);
         return true;
       }
@@ -441,7 +431,6 @@ static bool hw_handle_rh_int(uint8_t rhport)
     USB_REG->HSTICR = HSTICR_RSTIC;
     USB_REG->HSTIDR = HSTIDR_RSTIEC;
 
-    hw_pipes_reset(rhport);
     return true;
   }
 
@@ -468,6 +457,8 @@ static bool hw_handle_rh_int(uint8_t rhport)
     USB_REG->HSTIER = HSTIER_DCONNIES;
 
     status[rhport] = HCD_IDLE;
+
+    hw_pipes_reset(rhport);
 
     // if (hcd_port_connect_status(rhport))
     // {
