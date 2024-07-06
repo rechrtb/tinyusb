@@ -763,13 +763,18 @@ void hcd_int_handler(uint8_t rhport)
   // Pipe processing & exception interrupts
   if (((USB_REG->HSTISR) & HSTISR_HSOFI) && ((USB_REG->HSTIMR) & HSTIMR_HSOFIE))
   {
-    if (hcd_frame_number(rhport) > 10)
+    USB_REG->HSTICR = HSTICR_HSOFIC;
+
+    // Do not handle micro-SOFs
+    if((USB_REG->HSTFNUM & HSTFNUM_MFNUM) >> HSTFNUM_MFNUM_Pos)
+    {
+      return;
+    }
+
+    if (status[rhport] == HCD_ATTACHING && hcd_frame_number(rhport) > 10)
     {
       //events[events_idx++] = 5;
-
-      USB_REG->HSTICR = HSTICR_HSOFIC;
       USB_REG->HSTIDR = HSTIDR_HSOFIEC;
-
       status[rhport] =  HCD_RESETTING;
       hcd_event_device_attach(rhport, true);
     }
