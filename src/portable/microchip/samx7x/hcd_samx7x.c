@@ -213,6 +213,13 @@ static void hw_pipe_reset(uint8_t rhport, uint8_t pipe)
 {
   (void)rhport;
 
+  // Stop ongoing dma transfers
+  if (pipe_xfers[pipe].dma)
+  {
+    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
+    USB_REG->HSTDMA[pipe - 1].HSTDMACONTROL = 0;
+  }
+
   // Reset pipe to stop transfer
   uint32_t mask = HSTPIP_PRST0 << pipe;
   USB_REG->HSTPIP |= mask;    // put pipe in reset
