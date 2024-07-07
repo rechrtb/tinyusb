@@ -257,12 +257,7 @@ static bool hw_pipe_prepare_out(uint8_t rhport, uint8_t pipe)
   {
     uint8_t *dst = PEP_GET_FIFO_PTR(pipe, 8);
     uint8_t *src = pipe_xfers[pipe].buffer + pipe_xfers[pipe].done;
-    for (uint32_t i = 0; i < next; i++)
-    {
-      *dst++ = *src++;
-    }
-    __DSB();
-    __ISB();
+    memcpy(dst, src, next);
     pipe_xfers[pipe].done += next;
   }
 
@@ -274,56 +269,38 @@ static bool hw_pipe_prepare_out(uint8_t rhport, uint8_t pipe)
   return false;
 }
 
-static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_addr, uint8_t ep_addr)
+static bool hw_pipe_prepare_in(uint8_t rhport, uint8_t pipe)
 {
-  static_assert(HSTPIPISR_CTRL_TXSTPI == HSTPIPISR_BLK_TXSTPI);
-  static_assert(HSTPIPIMR_CTRL_TXSTPE == HSTPIPIMR_BLK_TXSTPE);
-  if (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_CTRL_TXSTPI) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_CTRL_TXSTPE))
+  uint32_t recieved = hw_pipe_bytes(rhport, pipe);
+
+  if (recieved)
   {
-    //events[events_idx++] = 31;
-    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
-    // Clear and disable setup packet interrupt
-    hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_TXSTPIC);
-    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_CTRL_TXSTPEC);
-    // Notify TinyUSB of setup transmit success
-    hcd_event_xfer_complete(dev_addr, ep_addr, 8, XFER_RESULT_SUCCESS, true);
-    return true;
+    // Copy data from FIFO to buffer
+    uint8_t *src = PEP_GET_FIFO_PTR(pipe, 8);
+    uint8_t *dst = pipe_xfers[pipe].buffer + pipe_xfers[pipe].done;
+    for (uint32_t i = 0; i < recieved; i++)
+    {
+      *dst++ = *src++;
+    }
+    __DSB();
+    __ISB();
+    pipe_xfers[pipe].done += recieved;
   }
 
+  return pipe_xfers[pipe].done >= pipe_xfers[pipe].total || recieved < hw_pipe_get_size(rhport, pipe);
+}
+
+static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_addr, uint8_t ep_addr)
+{
   if ((((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_RXINI) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_RXINE)) ||
       (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_SHORTPACKETI) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_SHORTPACKETIE)))
   {
-    //events[events_idx++] = 32;
+    //events[events_idx++] = 50;
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_RXINIC | HSTPIPICR_SHORTPACKETIC);
 
-    if (hw_pipe_get_type(rhport, pipe) == TUSB_XFER_CONTROL)
+    if (hw_pipe_prepare_in(rhport, pipe))
     {
-      // In case of low USB speed and with a high CPU frequency,
-      // a ACK from host can be always running on USB line
-      // then wait end of ACK on IN pipe.
-      while (!(USB_REG->HSTPIPIMR[pipe] & HSTPIPIMR_PFREEZE));
-    }
-
-    uint32_t rxed = hw_pipe_bytes(rhport, pipe);
-
-    if (rxed)
-    {
-      //events[events_idx++] = 34;
-      // Copy data from FIFO to buffer
-      uint8_t *src = PEP_GET_FIFO_PTR(pipe, 8);
-      uint8_t *dst = pipe_xfers[pipe].buffer + pipe_xfers[pipe].done;
-      for (uint32_t i = 0; i < rxed; i++)
-      {
-        *dst++ = *src++;
-      }
-      __DSB();
-      __ISB();
-      pipe_xfers[pipe].done += rxed;
-    }
-
-    if (pipe_xfers[pipe].done >= pipe_xfers[pipe].total || rxed < hw_pipe_get_size(rhport, pipe))
-    {
-      //events[events_idx++] = 35;
+      //events[events_idx++] = 51;
       hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
       hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_RXINEC | HSTPIPIDR_SHORTPACKETIEC);
       if (hw_pipe_get_type(rhport, pipe) != TUSB_XFER_CONTROL)
@@ -340,7 +317,7 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
 
   if (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_TXOUTI) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_TXOUTE))
   {
-    //events[events_idx++] = 36;
+    //events[events_idx++] = 52;
     // Clear transmit interrupt
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
     bool end = hw_pipe_prepare_out(rhport, pipe);
@@ -348,7 +325,7 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
 
     if (end)
     {
-      //events[events_idx++] = 37;
+      //events[events_idx++] = 53;
       hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_TXOUTEC);
       hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_NBUSYBKES);
     }
@@ -357,15 +334,58 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
 
   if ((((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_NBUSYBK) == 0) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_NBUSYBKE))
   {
-    //events[events_idx++] = 38;
+    //events[events_idx++] = 54;
     hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC);
-    if (hw_pipe_get_type(rhport, pipe) != TUSB_XFER_CONTROL)
-    {
-      //events[events_idx++] = 39;
-      USB_REG->HSTIDR = ((HSTISR_PEP_0) << pipe);
-    }
+    USB_REG->HSTIDR = ((HSTISR_PEP_0) << pipe);
     hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
+    return true;
+  }
+
+  return false;
+}
+
+bool hw_handle_ctrl_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_addr, uint8_t ep_addr)
+{
+  static_assert(HSTPIPISR_CTRL_TXSTPI == HSTPIPISR_BLK_TXSTPI);
+  static_assert(HSTPIPIMR_CTRL_TXSTPE == HSTPIPIMR_BLK_TXSTPE);
+  if (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_CTRL_TXSTPI) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_CTRL_TXSTPE))
+  {
+    //events[events_idx++] = 40;
+    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
+    // Clear and disable setup packet interrupt
+    hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_TXSTPIC);
+    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_CTRL_TXSTPEC);
+    // Notify TinyUSB of setup transmit success
+    hcd_event_xfer_complete(dev_addr, ep_addr, 8, XFER_RESULT_SUCCESS, true);
+    return true;
+  }
+
+  if ((((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_RXINI) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_RXINE)))
+  {
+    //events[events_idx++] = 41;
+    hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_RXINIC);
+
+    // In case of low USB speed and with a high CPU frequency,
+    // a ACK from host can be always running on USB line
+    // then wait end of ACK on IN pipe.
+    while (!(USB_REG->HSTPIPIMR[pipe] & HSTPIPIMR_PFREEZE));
+
+    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_RXINEC);
+    hw_pipe_prepare_in(rhport, pipe);
+    hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].done, XFER_RESULT_SUCCESS, true);
+    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
+    return true;
+  }
+
+  if (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_TXOUTI) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_TXOUTE))
+  {
+    //events[events_idx++] = 42;
+    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
+    // Clear transmit interrupt
+    hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
+    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_TXOUTEC);
+    hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].done, XFER_RESULT_SUCCESS, true);
     return true;
   }
 
@@ -379,21 +399,27 @@ static bool hw_handle_pipe_int(uint8_t rhport)
 
   if (pipe < EP_MAX)
   {
+    //events[events_idx++] = 31;
     uint8_t dev_addr = hw_pipe_get_dev_addr(rhport, pipe);
     uint8_t ep_addr = hw_pipe_get_ep_addr(rhport, pipe);
 
-    bool handled = hw_handle_fifo_pipe_int(rhport, pipe, dev_addr, ep_addr);
+    bool handled = hw_pipe_get_type(rhport, pipe) == TUSB_XFER_CONTROL ?
+                   //events[events_idx++] = 32 &&
+                   hw_handle_ctrl_pipe_int(rhport, pipe, dev_addr, ep_addr) :
+                   //events[events_idx++] = 33 &&
+                   hw_handle_fifo_pipe_int(rhport, pipe, dev_addr, ep_addr);
 
     if (!handled)
     {
-      //events[events_idx++] = 40;
+      //events[events_idx++] = 34;
+
       static_assert(HSTPIPISR_CTRL_RXSTALLDI == HSTPIPISR_BLK_RXSTALLDI);
       static_assert(HSTPIPISR_CTRL_RXSTALLDI == HSTPIPISR_INTRPT_RXSTALLDI);
       static_assert(HSTPIPIMR_CTRL_RXSTALLDE == HSTPIPIMR_BLK_RXSTALLDE);
       static_assert(HSTPIPIMR_CTRL_RXSTALLDE == HSTPIPIMR_INTRPT_RXSTALLDE);
       if (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_CTRL_RXSTALLDI) & ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_CTRL_RXSTALLDE))
       {
-        //events[events_idx++] = 41;
+        //events[events_idx++] = 35;
         hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_RXSTALLDIC);
         hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_RSTDTS);
         hw_pipe_reset(rhport, pipe);
@@ -403,7 +429,7 @@ static bool hw_handle_pipe_int(uint8_t rhport)
 
       if (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_PERRI) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_PERRE))
       {
-        //events[events_idx++] = 42;
+        //events[events_idx++] = 36;
         xfer_result_t res = (USB_REG->HSTPIPERR[pipe] & HSTPIPERR_TIMEOUT)
                             ? XFER_RESULT_TIMEOUT : XFER_RESULT_FAILED;
         hw_pipe_reset(rhport, pipe);
@@ -440,7 +466,7 @@ static bool hw_handle_rh_int(uint8_t rhport)
   // Device disconnection
   if (((USB_REG->HSTISR) & HSTISR_DDISCI) && ((USB_REG->HSTIMR) & HSTIMR_DDISCIE))
   {
-    //events[events_idx++] = 255;
+    //events[events_idx++] = 2;
 
     // Acknowledge disconnection interrupt
     USB_REG->HSTICR = HSTICR_DDISCIC | HSTICR_HSOFIC;
@@ -460,21 +486,17 @@ static bool hw_handle_rh_int(uint8_t rhport)
 
     hw_pipes_reset(rhport);
 
-    // if (hcd_port_connect_status(rhport))
-    // {
-      // Send the event to tinyUSB
-      hcd_event_device_remove(rhport, true);
-    // }
+    hcd_event_device_remove(rhport, true);
     return true;
   }
 
   // Device connection
   if (((USB_REG->HSTISR) & HSTISR_DCONNI) && ((USB_REG->HSTIMR) & HSTIMR_DCONNIE))
   {
-    // events_idx = 0;
-    // memset((void*)(&events), 0, sizeof(events));
+    events_idx = 0;
+    memset((void*)(&events), 0, sizeof(events));
 
-    //events[events_idx++] = 0;
+    //events[events_idx++] = 3;
 
     // Acknowledge connection interrupt
     USB_REG->HSTICR = HSTICR_DCONNIC;
@@ -582,6 +604,26 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
   return true;
 }
 
+static void hw_pipe_ctrl_xfer(uint8_t rhport, uint8_t pipe, bool in)
+{
+  hw_pipe_set_token(rhport, pipe, in ? HSTPIPCFG_PTOKEN_IN : HSTPIPCFG_PTOKEN_OUT); // control pipes are bi-directional, set correct token
+
+  if (in)
+  {
+    //events[events_idx++] = 25;
+    hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_RXINIC | HSTPIPICR_SHORTPACKETIC);
+    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_RXINES);
+  }
+  else
+  {
+    //events[events_idx++] = 26;
+    hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
+    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_TXOUTES);
+    hw_pipe_prepare_out(rhport, pipe);
+  }
+  hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC | HSTPIPIDR_FIFOCONC);
+}
+
 void hcd_int_enable(uint8_t rhport)
 {
   (void)rhport;
@@ -597,7 +639,7 @@ void hcd_int_disable(uint8_t rhport)
 void hcd_port_reset(uint8_t rhport)
 {
   (void)rhport;
-  //events[events_idx++] = 60;
+  //events[events_idx++] = 4;
   // Enable reset sent interrupt
   USB_REG->HSTIER = HSTIER_RSTIES;
   // Send reset
@@ -716,36 +758,33 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 
   //events[events_idx++] = 20;
 
-  if (hw_pipe_get_type(rhport, pipe) == TUSB_XFER_CONTROL) // control pipes are bi-directional, set correct token
+  bool in = ep_addr & TUSB_DIR_IN_MASK;
+
+  if (hw_pipe_get_type(rhport, pipe) == TUSB_XFER_CONTROL)
   {
     //events[events_idx++] = 21;
-    hw_pipe_set_token(rhport, pipe, (ep_addr & TUSB_DIR_IN_MASK) ? HSTPIPCFG_PTOKEN_IN : HSTPIPCFG_PTOKEN_OUT);
+    hw_pipe_ctrl_xfer(rhport, pipe, in);
   }
   else
   {
     //events[events_idx++] = 22;
     USB_REG->HSTIER = (HSTISR_PEP_0) << pipe;
-  }
-
-  if (ep_addr & TUSB_DIR_IN_MASK)
-  {
-    //events[events_idx++] = 23;
-    if (hw_pipe_get_type(rhport, pipe) != TUSB_XFER_CONTROL)
+    if (ep_addr & TUSB_DIR_IN_MASK)
     {
+      //events[events_idx++] = 23;
       USB_REG->HSTPIPINRQ[pipe] |= HSTPIPINRQ_INMODE;
+      hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_RXINIC | HSTPIPICR_SHORTPACKETIC);
+      hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_RXINES | HSTPIPIER_SHORTPACKETIES);
+      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
     }
-
-    hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_RXINIC | HSTPIPICR_SHORTPACKETIC);
-    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_RXINES | HSTPIPIER_SHORTPACKETIES);
-    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
-  }
-  else
-  {
-    //events[events_idx++] = 24;
-    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
-    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC);
-    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_TXOUTES);
-    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
+    else
+    {
+      //events[events_idx++] = 24;
+      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
+      hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_TXOUTES);
+      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC);
+      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
+    }
   }
 
   return true;
