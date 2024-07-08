@@ -319,7 +319,7 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
       {
         hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
         USB_REG->HSTIDR = ((HSTISR_PEP_0) << pipe);
-        hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
+        hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].done, XFER_RESULT_SUCCESS, true);
       }
       else
       {
@@ -339,7 +339,7 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
     {
       hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
       USB_REG->HSTIDR = ((HSTISR_PEP_0) << pipe);
-      hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
+      hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].done, XFER_RESULT_SUCCESS, true);
     }
     return true;
   }
