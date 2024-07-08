@@ -246,7 +246,7 @@ static tusb_xfer_type_t hw_pipe_get_type(uint16_t rhport, uint8_t pipe)
   return (tusb_xfer_type_t)((USB_REG->HSTPIPCFG[pipe] & HSTPIPCFG_PTYPE) >> HSTPIPCFG_PTYPE_Pos);
 }
 
-static bool hw_pipe_prepare_out(uint8_t rhport, uint8_t pipe)
+static bool hw_pipe_fifo_copy_out(uint8_t rhport, uint8_t pipe)
 {
   uint32_t remain = pipe_xfers[pipe].total - pipe_xfers[pipe].done;
   uint16_t pipe_size = hw_pipe_get_size(rhport, pipe);
@@ -261,15 +261,12 @@ static bool hw_pipe_prepare_out(uint8_t rhport, uint8_t pipe)
     pipe_xfers[pipe].done += next;
   }
 
-  if (pipe_xfers[pipe].done >= pipe_xfers[pipe].total || next < pipe_size)
-  {
-    return true;
-  }
-
-  return false;
+  // Returns if last segment to transmit: the last segment has been copied to
+  // the FIFO or the current segment is short.
+  return pipe_xfers[pipe].done >= pipe_xfers[pipe].total || next < pipe_size;
 }
 
-static bool hw_pipe_prepare_in(uint8_t rhport, uint8_t pipe)
+static bool hw_pipe_fifo_copy_in(uint8_t rhport, uint8_t pipe)
 {
   uint32_t recieved = hw_pipe_bytes(rhport, pipe);
 
@@ -298,7 +295,7 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
     //events[events_idx++] = 50;
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_RXINIC | HSTPIPICR_SHORTPACKETIC);
 
-    if (hw_pipe_prepare_in(rhport, pipe))
+    if (hw_pipe_fifo_copy_in(rhport, pipe))
     {
       //events[events_idx++] = 51;
       hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
@@ -320,10 +317,10 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
     //events[events_idx++] = 52;
     // Clear transmit interrupt
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
-    bool end = hw_pipe_prepare_out(rhport, pipe);
+    bool last = hw_pipe_fifo_copy_out(rhport, pipe);
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
 
-    if (end)
+    if (last) // on last segment, wait for banks to be empty
     {
       //events[events_idx++] = 53;
       hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_TXOUTEC);
@@ -354,8 +351,8 @@ bool hw_handle_ctrl_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_addr, uin
     //events[events_idx++] = 40;
     hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
     // Clear and disable setup packet interrupt
-    hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_TXSTPIC);
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_CTRL_TXSTPEC);
+    hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_CTRL_TXSTPIC);
     // Notify TinyUSB of setup transmit success
     hcd_event_xfer_complete(dev_addr, ep_addr, 8, XFER_RESULT_SUCCESS, true);
     return true;
@@ -365,14 +362,16 @@ bool hw_handle_ctrl_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_addr, uin
   {
     //events[events_idx++] = 41;
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_RXINIC);
+    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_RXINEC);
 
     // In case of low USB speed and with a high CPU frequency,
     // a ACK from host can be always running on USB line
     // then wait end of ACK on IN pipe.
     while (!(USB_REG->HSTPIPIMR[pipe] & HSTPIPIMR_PFREEZE));
 
-    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_RXINEC);
-    hw_pipe_prepare_in(rhport, pipe);
+    hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_RXINIC);
+
+    hw_pipe_fifo_copy_in(rhport, pipe);
     hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].done, XFER_RESULT_SUCCESS, true);
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
     return true;
@@ -619,7 +618,7 @@ static void hw_pipe_ctrl_xfer(uint8_t rhport, uint8_t pipe, bool in)
     //events[events_idx++] = 26;
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
     hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_TXOUTES);
-    hw_pipe_prepare_out(rhport, pipe);
+    hw_pipe_fifo_copy_out(rhport, pipe);
   }
   hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC | HSTPIPIDR_FIFOCONC);
 }
