@@ -312,11 +312,20 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
     bool last = hw_pipe_fifo_copy_out(rhport, pipe);
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
 
-    if (last) // on last segment, wait for banks to be empty
+    if (last) // on last segment, wait for banks to be empty if not isochronous
     {
-      //events[events_idx++] = 53;
       hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_TXOUTEC);
-      hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_NBUSYBKES);
+      if (hw_pipe_get_type(rhport, pipe) == TUSB_XFER_ISOCHRONOUS) // for isochronous pipes, no need for ack
+      {
+        hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
+        USB_REG->HSTIDR = ((HSTISR_PEP_0) << pipe);
+        hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
+      }
+      else
+      {
+        //events[events_idx++] = 53;
+        hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_NBUSYBKES);
+      }
     }
     return true;
   }
@@ -324,10 +333,14 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
   if ((((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_NBUSYBK) == 0) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_NBUSYBKE))
   {
     //events[events_idx++] = 54;
-    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC);
-    USB_REG->HSTIDR = ((HSTISR_PEP_0) << pipe);
-    hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
+
+    if (hw_pipe_get_type(rhport, pipe) != TUSB_XFER_ISOCHRONOUS) // for isochornous pipes, this was done on tx out handling
+    {
+      hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
+      USB_REG->HSTIDR = ((HSTISR_PEP_0) << pipe);
+      hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
+    }
     return true;
   }
 
