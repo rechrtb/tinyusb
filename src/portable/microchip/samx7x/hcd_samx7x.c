@@ -772,23 +772,21 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
   else
   {
     //events[events_idx++] = 22;
-    USB_REG->HSTIER = (HSTISR_PEP_0) << pipe;
+    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
     if (ep_addr & TUSB_DIR_IN_MASK)
     {
       //events[events_idx++] = 23;
       USB_REG->HSTPIPINRQ[pipe] |= HSTPIPINRQ_INMODE;
       hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_RXINIC | HSTPIPICR_SHORTPACKETIC);
       hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_RXINES | HSTPIPIER_SHORTPACKETIES);
-      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
     }
     else
     {
       //events[events_idx++] = 24;
-      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
       hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_TXOUTES);
       hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC);
-      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
     }
+    USB_REG->HSTIER = (HSTISR_PEP_0) << pipe;
   }
 
   return true;
