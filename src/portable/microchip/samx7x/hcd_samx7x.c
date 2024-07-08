@@ -275,12 +275,7 @@ static bool hw_pipe_fifo_copy_in(uint8_t rhport, uint8_t pipe)
     // Copy data from FIFO to buffer
     uint8_t *src = PEP_GET_FIFO_PTR(pipe, 8);
     uint8_t *dst = pipe_xfers[pipe].buffer + pipe_xfers[pipe].done;
-    for (uint32_t i = 0; i < recieved; i++)
-    {
-      *dst++ = *src++;
-    }
-    __DSB();
-    __ISB();
+    memcpy(dst, src, recieved);
     pipe_xfers[pipe].done += recieved;
   }
 
