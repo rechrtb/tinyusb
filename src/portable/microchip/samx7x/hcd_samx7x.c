@@ -915,6 +915,8 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
   {
     bool in = ep_addr & TUSB_DIR_IN_MASK;
 
+    USB_REG->HSTPIPCFG[pipe] &= ~HSTPIPCFG_AUTOSW;
+
     if (hw_pipe_get_type(rhport, pipe) == TUSB_XFER_CONTROL)
     {
       //events[events_idx++] = 21;
