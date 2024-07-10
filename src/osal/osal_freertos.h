@@ -207,6 +207,13 @@ TU_ATTR_ALWAYS_INLINE static inline bool osal_queue_empty(osal_queue_t qhdl) {
   return uxQueueMessagesWaiting(qhdl) == 0;
 }
 
+TU_ATTR_ALWAYS_INLINE static inline bool osal_queue_clear(osal_queue_t qhdl)
+{
+  // Skip queue lock/unlock since this function is primarily called
+  // with interrupt disabled before going into low power mode
+  return xQueueReset(qhdl);
+}
+
 #ifdef __cplusplus
 }
 #endif
