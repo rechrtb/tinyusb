@@ -1518,7 +1518,6 @@ static bool enum_new_device(hcd_event_t* event)
 
   if (_dev0.hub_addr == 0)
   {
-    osal_queue_clear(_usbh_q);
     // connected/disconnected directly with roothub
     hcd_port_reset(_dev0.rhport);
     osal_task_delay(ENUM_RESET_DELAY); // TODO may not work for no-OS on MCU that require reset_end() since
