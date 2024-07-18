@@ -528,6 +528,9 @@ static bool hw_handle_rh_int(uint8_t rhport)
     USB_REG->HSTICR = HSTICR_RSTIC;
     USB_REG->HSTIDR = HSTIDR_RSTIEC;
 
+    __ISB();
+    __DSB();
+
     status[rhport] = true;
     return true;
   }
