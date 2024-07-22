@@ -927,7 +927,7 @@ void hcd_int_handler(uint8_t rhport)
     RET_IF_TRUE(hw_handle_rh_int(rhport));
   }
 
-  assert(false); // error condition
+  TU_ASSERT(false, ); // error condition
 }
 
 #endif
