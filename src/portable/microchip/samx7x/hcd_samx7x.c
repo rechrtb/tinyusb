@@ -46,7 +46,7 @@ static_assert(TUSB_XFER_CONTROL == HSTPIPCFG_PTYPE_CTRL_Val &&
               TUSB_XFER_INTERRUPT == HSTPIPCFG_PTYPE_INTRPT_Val);
 
 #ifndef USE_DUAL_BANK
-#  if TUD_OPT_HIGH_SPEED
+#  if ((CFG_TUH_MAX_SPEED == OPT_MODE_DEFAULT_SPEED) || (CFG_TUH_MAX_SPEED == OPT_MODE_HIGH_SPEED))
 #    define USE_DUAL_BANK   0
 #  else
 #    define USE_DUAL_BANK   1
@@ -198,6 +198,22 @@ static inline void hw_pipe_enable(uint8_t rhport, uint8_t pipe, bool enable)
   {
     USB_REG->HSTPIP &= ~mask;
   }
+}
+
+static inline void hw_set_speed(uint8_t rhport)
+{
+  (void) rhport;
+  // Restore host speed detection in case the disconnected LS device
+  USBHS->USBHS_HSTCTRL &= ~USBHS_HSTCTRL_SPDCONF_Msk;
+#if (CFG_TUH_MAX_SPEED == OPT_MODE_DEFAULT_SPEED)
+  USBHS->USBHS_HSTCTRL |= USBHS_HSTCTRL_SPDCONF_NORMAL;
+#elif (CFG_TUH_MAX_SPEED == OPT_MODE_HIGH_SPEED)
+  USBHS->USBHS_HSTCTRL |= USBHS_HSTCTRL_SPDCONF_HIGH_SPEED;
+#elif (CFG_TUH_MAX_SPEED == OPT_MODE_FULL_SPEED)
+  USBHS->USBHS_HSTCTRL |= USBHS_HSTCTRL_SPDCONF_FORCED_FS;
+#else // CFG_TUH_MAX_SPEED == OPT_MODE_LOW_SPEED
+  USBHS->USBHS_HSTCTRL |= USBHS_HSTCTRL_SPDCONF_LOW_POWER;
+#endif
 }
 
 static void hw_pipe_reset(uint8_t rhport, uint8_t pipe)
@@ -548,9 +564,7 @@ static bool hw_handle_rh_int(uint8_t rhport)
     // Disable reset, in case of disconnection during reset
     USB_REG->HSTCTRL &= ~HSTCTRL_RESET;
 
-    // Restore host speed detection in case the disconnected LS device
-    USBHS->USBHS_HSTCTRL &= ~USBHS_HSTCTRL_SPDCONF_Msk;
-    USBHS->USBHS_HSTCTRL |= USBHS_HSTCTRL_SPDCONF_NORMAL;
+    hw_set_speed(rhport);
 
     USB_REG->HSTICR = HSTICR_DCONNIC;
     USB_REG->HSTIER = HSTIER_DCONNIES;
@@ -594,9 +608,7 @@ bool hcd_init(uint8_t rhport)
   // Freeze USB clock for now
   USB_REG->CTRL |= CTRL_FRZCLK;
 
-  // Set USB to switch to high speed if necessary
-  USBHS->USBHS_HSTCTRL &= ~USBHS_HSTCTRL_SPDCONF_Msk;
-  USBHS->USBHS_HSTCTRL |= USBHS_HSTCTRL_SPDCONF_NORMAL;
+  hw_set_speed(rhport);
 
   // Force re-connection on initialization
   USB_REG->HSTIFR |= HSTIMR_DDISCIE;
