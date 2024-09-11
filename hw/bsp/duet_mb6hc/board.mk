@@ -9,8 +9,6 @@ CFLAGS += \
   -nostdlib -nostartfiles \
   -D__SAME70Q21B__ \
   -DCFG_TUSB_MCU=OPT_MCU_SAMX7X \
-  -Wno-error=unused-function \
-  -Wno-error=unused-variable \
   -Dnoexcept=
 
 LDFLAGS += \

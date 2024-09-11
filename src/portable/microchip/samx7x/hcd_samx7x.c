@@ -75,16 +75,19 @@ static inline bool hw_pipe_enabled(uint8_t rhport, uint8_t pipe)
 
 static inline uint8_t hw_pipe_interrupt(uint8_t rhport)
 {
+  (void) rhport;
   return __builtin_ctz((((USB_REG->HSTISR) & (USB_REG->HSTIMR)) >> 8) | (1 << EP_MAX));
 }
 
 static inline uint8_t hw_pipe_dma_interrupt(uint8_t rhport)
 {
+  (void) rhport;
 	return (__builtin_ctz((((USB_REG->HSTISR) & (USB_REG->HSTIMR)) >> 25) | (1 << (EP_MAX-1))) + 1);
 }
 
 static inline bool hw_pipe_frozen(uint8_t rhport, uint8_t pipe)
 {
+  (void) rhport;
   return (USB_REG->HSTPIPIMR[pipe] & HSTPIPIMR_PFREEZE);
 }
 
@@ -189,6 +192,7 @@ static uint8_t hw_pipe_find_free(uint8_t rhport, tusb_desc_endpoint_t const *ep_
 
 static inline void hw_pipe_enable(uint8_t rhport, uint8_t pipe, bool enable)
 {
+  (void)rhport;
   uint32_t mask = HSTPIP_PEN0 << pipe;
   if (enable)
   {
@@ -738,11 +742,13 @@ bool hcd_port_connect_status(uint8_t rhport)
 
 tusb_speed_t hcd_port_speed_get(uint8_t rhport)
 {
+  (void)rhport;
   return hw_port_speed_get();
 }
 
 uint32_t hcd_frame_number(uint8_t rhport)
 {
+  (void)rhport;
   return (USB_REG->HSTFNUM & HSTFNUM_FNUM) >> HSTFNUM_FNUM_Pos;
 }
 
