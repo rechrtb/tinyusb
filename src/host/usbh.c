@@ -383,6 +383,9 @@ bool tuh_init(uint8_t controller_id)
   return true;
 }
 
+hcd_event_t hcd_events[256];
+volatile uint32_t hcd_events_idx = 0;
+
 /* USB Host Driver task
  * This top level thread manages all host controller event and delegates events to class-specific drivers.
  * This should be called periodically within the mainloop or rtos thread.
@@ -413,6 +416,12 @@ void tuh_task_ext(uint32_t timeout_ms, bool in_isr)
   {
     hcd_event_t event;
     if ( !osal_queue_receive(_usbh_q, &event, timeout_ms) ) return;
+
+    memcpy(&hcd_events[hcd_events_idx++], &event, sizeof(event));
+    if (hcd_events_idx >= sizeof(hcd_events)/sizeof(hcd_events[0]))
+    {
+      hcd_events_idx = 0;
+    }
 
     switch (event.event_id)
     {
@@ -628,6 +637,7 @@ static void _xfer_complete(uint8_t daddr, xfer_result_t result)
   }
 }
 
+
 static bool usbh_control_xfer_cb (uint8_t dev_addr, uint8_t ep_addr, xfer_result_t result, uint32_t xferred_bytes)
 {
   (void) ep_addr;
@@ -643,6 +653,7 @@ static bool usbh_control_xfer_cb (uint8_t dev_addr, uint8_t ep_addr, xfer_result
     _xfer_complete(dev_addr, result);
   }else
   {
+
     switch(_ctrl_xfer.stage)
     {
       case CONTROL_STAGE_SETUP:
@@ -864,6 +875,10 @@ void hcd_devtree_get_info(uint8_t dev_addr, hcd_devtree_info_t* devtree_info)
 
 TU_ATTR_FAST_FUNC void hcd_event_handler(hcd_event_t const* event, bool in_isr)
 {
+  if (event->event_id == HCD_EVENT_DEVICE_ATTACH)
+  {
+    volatile int a = 0;
+  }
   switch (event->event_id)
   {
     default:
@@ -1177,6 +1192,10 @@ static bool enum_request_set_addr(void);
 static bool _parse_configuration_descriptor (uint8_t dev_addr, tusb_desc_configuration_t const* desc_cfg);
 static void enum_full_complete(void);
 
+
+uint8_t enum_events[256];
+volatile uint32_t enum_events_idx = 0;
+
 // process device enumeration
 static void process_enumeration(tuh_xfer_t* xfer)
 {
@@ -1205,6 +1224,12 @@ static void process_enumeration(tuh_xfer_t* xfer)
 
   uint8_t const daddr = xfer->daddr;
   uintptr_t const state = xfer->user_data;
+
+  enum_events[enum_events_idx++] = state;
+  if (enum_events_idx >= sizeof(enum_events)/sizeof(enum_events[0]))
+  {
+    enum_events_idx = 0;
+  }
 
   switch(state)
   {

@@ -12,10 +12,10 @@ CFLAGS += \
   -Dnoexcept=
 
 LDFLAGS += \
-  -Wl,--defsym,__stack_size__=0x800 \
+  -Wl,--defsym,__stack_size__=0x2000 \
 
 # suppress following warnings from mcu driver
-CFLAGS += -Wno-error=unused-parameter -Wno-error=cast-align -Wno-error=cast-qual -Wno-error=redundant-decls
+CFLAGS += -Wno-error=unused-parameter -Wno-error=cast-align -Wno-error=cast-qual -Wno-error=redundant-decls -Wno-error=unused-variable
 
 ASF_DIR = hw/mcu/microchip/same70
 

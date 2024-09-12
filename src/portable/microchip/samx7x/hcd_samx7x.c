@@ -45,6 +45,7 @@ static_assert(TUSB_XFER_CONTROL == HSTPIPCFG_PTYPE_CTRL_Val &&
               TUSB_XFER_BULK == HSTPIPCFG_PTYPE_BLK_Val &&
               TUSB_XFER_INTERRUPT == HSTPIPCFG_PTYPE_INTRPT_Val);
 
+
 #ifndef USE_DUAL_BANK
 #  if ((CFG_TUH_MAX_SPEED == OPT_MODE_DEFAULT_SPEED) || (CFG_TUH_MAX_SPEED == OPT_MODE_HIGH_SPEED))
 #    define USE_DUAL_BANK   0
@@ -52,6 +53,11 @@ static_assert(TUSB_XFER_CONTROL == HSTPIPCFG_PTYPE_CTRL_Val &&
 #    define USE_DUAL_BANK   1
 #  endif
 #endif
+
+uint8_t hw_events[1024];
+volatile uint32_t hw_events_idx = 0;
+
+#define ADD_EVENT(n)    hw_events[hw_events_idx++] = n; if (hw_events_idx >= sizeof(hw_events)/ sizeof(hw_events[0])) hw_events_idx = 0;
 
 #define RET_IF_TRUE(fn)      if (fn) { return; }
 
@@ -563,6 +569,7 @@ static bool hw_handle_rh_int(uint8_t rhport)
       USB_REG->HSTIER = HSTIER_DDISCIES;
 
       hcd_event_device_attach(rhport, true);
+      ADD_EVENT(3);
     }
 
     return true;
@@ -579,6 +586,7 @@ static bool hw_handle_rh_int(uint8_t rhport)
     __DSB();
 
     status[rhport] = true;
+    ADD_EVENT(1);
     return true;
   }
 
@@ -604,6 +612,7 @@ static bool hw_handle_rh_int(uint8_t rhport)
 
     hw_pipes_reset(rhport);
     hcd_event_device_remove(rhport, true);
+    ADD_EVENT(2);
     return true;
   }
 
