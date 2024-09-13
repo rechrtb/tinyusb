@@ -102,7 +102,7 @@
 #define CFG_TUH_VENDOR              0
 
 // max device support (excluding hub device)
-#define CFG_TUH_DEVICE_MAX          (CFG_TUH_HUB ? 4 : 1) // hub typically has 4 ports
+#define CFG_TUH_DEVICE_MAX          (CFG_TUH_HUB ? 2 : 1) // hub typically has 4 ports
 
 //------------- MSC -------------//
 #define CFG_TUH_MSC_MAXLUN    4 // typical for most card reader
