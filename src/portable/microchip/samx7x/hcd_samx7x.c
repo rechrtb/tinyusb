@@ -55,7 +55,10 @@ static_assert(TUSB_XFER_CONTROL == HSTPIPCFG_PTYPE_CTRL_Val &&
 
 #define RET_IF_TRUE(fn)      if (fn) { return; }
 
+#define ATTACH_WAIT_TIME 10 // number of frames to wait before determining device is attached
+
 static volatile bool status[1] = { false };
+static volatile uint32_t attach_start[1] = { UINT32_MAX };
 
 typedef struct
 {
@@ -547,6 +550,24 @@ static bool hw_handle_dma_int(uint8_t rhport)
 
 static bool hw_handle_rh_int(uint8_t rhport)
 {
+  if (((USB_REG->HSTISR) & HSTISR_HSOFI) && ((USB_REG->HSTIMR) & HSTIMR_HSOFIE))
+  {
+    USB_REG->HSTICR = HSTICR_HSOFIC;
+
+    if (hcd_frame_number(rhport) - attach_start[rhport] >= ATTACH_WAIT_TIME)
+    {
+      USB_REG->HSTIDR = HSTIDR_HSOFIEC;
+
+      // Prepare for disconnection interrupt
+      USB_REG->HSTICR = HSTICR_DDISCIC;
+      USB_REG->HSTIER = HSTIER_DDISCIES;
+
+      hcd_event_device_attach(rhport, true);
+    }
+
+    return true;
+  }
+
   // Device reset
   if (((USB_REG->HSTISR) & HSTISR_RSTI) && ((USB_REG->HSTIMR) & HSTIMR_RSTIE))
   {
@@ -568,8 +589,8 @@ static bool hw_handle_rh_int(uint8_t rhport)
   if (((USB_REG->HSTISR) & HSTISR_DDISCI) && ((USB_REG->HSTIMR) & HSTIMR_DDISCIE))
   {
     // Acknowledge disconnection interrupt
-    USB_REG->HSTICR = HSTICR_DDISCIC;
-    USB_REG->HSTIDR = HSTIDR_DDISCIEC;
+    USB_REG->HSTICR = HSTICR_DDISCIC | HSTICR_HSOFIC;
+    USB_REG->HSTIDR = HSTIDR_DDISCIEC | HSTIDR_HSOFIEC;
 
     // Disable reset, in case of disconnection during reset
     USB_REG->HSTCTRL &= ~HSTCTRL_RESET;
@@ -595,12 +616,10 @@ static bool hw_handle_rh_int(uint8_t rhport)
 
     // Enable SOF generation and interrupts
     USB_REG->HSTCTRL |= HSTCTRL_SOFE;
+    USB_REG->HSTIER |= HSTIER_HSOFIES;
 
-    // Prepare for disconnection interrupt
-    USB_REG->HSTICR = HSTICR_DDISCIC;
-    USB_REG->HSTIER = HSTIER_DDISCIES;
+    attach_start[rhport] = hcd_frame_number(rhport);
 
-    hcd_event_device_attach(rhport, true);
     return true;
   }
 
@@ -626,18 +645,23 @@ bool hcd_init(uint8_t rhport)
   // Enable USB
   USB_REG->CTRL = CTRL_USBE;
 
+  USB_REG->CTRL |= CTRL_VBUSHWC; // datasheet indicates must be set to 1
+  USB_REG->SFR |= SFR_VBUSRQS;
+
   // Clear all interrupts that may have been set by a previous host mode
   USBHS->USBHS_HSTICR = USBHS_HSTICR_DCONNIC | USBHS_HSTICR_DDISCIC
       | USBHS_HSTICR_HSOFIC  | USBHS_HSTICR_HWUPIC
       | USBHS_HSTICR_RSMEDIC | USBHS_HSTICR_RSTIC
       | USBHS_HSTICR_RXRSMIC;
 
-  USB_REG->CTRL |= CTRL_VBUSHWC; // datasheet indicates must be set to 1
-  USB_REG->SFR |= SFR_VBUSRQS;
+  // Disable all interrupts explicitly, and enable the ones needed
+  // to detect device attach.
+  USBHS->USBHS_HSTICR = USBHS_HSTIDR_DCONNIEC | USBHS_HSTIDR_DDISCIEC
+      | USBHS_HSTIDR_HSOFIEC  | USBHS_HSTIDR_HWUPIEC
+      | USBHS_HSTIDR_RSMEDIEC | USBHS_HSTIDR_RSTIEC
+      | USBHS_HSTIDR_RXRSMIEC;
+  USB_REG->HSTIER = HSTIER_DCONNIES;
 
-  USB_REG->HSTIDR = HSTIDR_HSOFIEC; // interrupts not used, just count registers
-
-  USB_REG->HSTIER = HSTIER_DCONNIES | HSTIER_RSTIES;
   status[rhport] = false;
   return true;
 }
@@ -946,7 +970,7 @@ void hcd_int_handler(uint8_t rhport)
   }
 
   // Host global (root hub) processing interrupts
-  if ((USB_REG->HSTISR) & (HSTISR_RSTI | HSTISR_DCONNI | HSTISR_DDISCI))
+  if ((USB_REG->HSTISR) & (HSTISR_RSTI | HSTISR_DCONNI | HSTISR_DDISCI | HSTISR_HSOFI))
   {
     RET_IF_TRUE(hw_handle_rh_int(rhport));
   }
