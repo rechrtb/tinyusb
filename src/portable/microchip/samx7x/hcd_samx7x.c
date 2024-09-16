@@ -597,8 +597,12 @@ static bool hw_handle_rh_int(uint8_t rhport)
   if (((USB_REG->HSTISR) & HSTISR_DDISCI) && ((USB_REG->HSTIMR) & HSTIMR_DDISCIE))
   {
     // Acknowledge disconnection interrupt
-    USB_REG->HSTICR = HSTICR_DDISCIC | HSTICR_HSOFIC;
-    USB_REG->HSTIDR = HSTIDR_DDISCIEC | HSTIDR_HSOFIEC;
+    USB_REG->HSTICR = HSTICR_DDISCIC;
+    USB_REG->HSTIDR = HSTIDR_DDISCIEC;
+
+    // Disable SOF in case device disconnected when trying to verify connection
+    USB_REG->HSTICR = HSTICR_HSOFIC;
+    USB_REG->HSTIDR = HSTIDR_HSOFIEC;
 
     // Disable reset, in case of disconnection during reset
     USB_REG->HSTCTRL &= ~HSTCTRL_RESET;
