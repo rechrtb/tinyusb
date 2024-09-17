@@ -40,6 +40,8 @@
 
 #include "SEGGER_SYSVIEW.h"
 
+extern SEGGER_SYSVIEW_MODULE TinyUSBModule;
+
 // Check that tusb_xfer_type_t has the same numerical value as the
 // peripheral definitions. This way, casting can be used instead of conditionals
 // or switches.

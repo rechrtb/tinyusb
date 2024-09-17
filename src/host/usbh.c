@@ -34,6 +34,11 @@
 #include "host/usbh_classdriver.h"
 #include "hub.h"
 
+
+#include "SEGGER_SYSVIEW.h"
+
+extern SEGGER_SYSVIEW_MODULE TinyUSBModule;
+
 //--------------------------------------------------------------------+
 // USBH Configuration
 //--------------------------------------------------------------------+
@@ -417,11 +422,7 @@ void tuh_task_ext(uint32_t timeout_ms, bool in_isr)
     hcd_event_t event;
     if ( !osal_queue_receive(_usbh_q, &event, timeout_ms) ) return;
 
-    memcpy(&hcd_events[hcd_events_idx++], &event, sizeof(event));
-    if (hcd_events_idx >= sizeof(hcd_events)/sizeof(hcd_events[0]))
-    {
-      hcd_events_idx = 0;
-    }
+    SEGGER_SYSVIEW_RecordU32(0 + TinyUSBModule.EventOffset, event.event_id);
 
     switch (event.event_id)
     {
