@@ -37,6 +37,9 @@
 #include "common_usb_regs.h"
 #include "common_usb_defs.h"
 
+
+#include "SEGGER_SYSVIEW.h"
+
 // Check that tusb_xfer_type_t has the same numerical value as the
 // peripheral definitions. This way, casting can be used instead of conditionals
 // or switches.
@@ -59,7 +62,6 @@ volatile uint32_t hw_events_idx = 0;
 
 #define ADD_EVENT(n)    hw_events[hw_events_idx++] = n; if (hw_events_idx >= sizeof(hw_events)/ sizeof(hw_events[0])) hw_events_idx = 0;
 
-#define RET_IF_TRUE(fn)      if (fn) { return; }
 
 #define ATTACH_WAIT_TIME 10 // number of frames to wait before determining device is attached
 
@@ -967,7 +969,10 @@ volatile uint32_t isr_idx = 0;
 
 void hcd_int_handler(uint8_t rhport)
 {
-  isr[isr_idx++] = (USB_REG->HSTISR); if (isr_idx >= sizeof(isr)/ sizeof(isr[0])) isr_idx = 0;
+
+  #define RET_IF_TRUE(fn)      if (fn) {  SEGGER_SYSVIEW_RecordExitISR(); return; }
+
+  SEGGER_SYSVIEW_RecordEnterISR();
 
   // Change to low power mode to only use the 48 MHz clock during low-speed
   if (hcd_port_speed_get(rhport) == TUSB_SPEED_LOW &&

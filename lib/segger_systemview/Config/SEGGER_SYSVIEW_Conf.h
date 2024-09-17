@@ -79,6 +79,9 @@ Additional information:
 **********************************************************************
 */
 
+#define SEGGER_SYSVIEW_POST_MORTEM_MODE 1
+#define SEGGER_SYSVIEW_RTT_BUFFER_SIZE 0x20000
+#define SEGGER_SYSVIEW_SYNC_PERIOD_SHIFT 8192
 
 #endif  // SEGGER_SYSVIEW_CONF_H
 

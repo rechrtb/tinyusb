@@ -33,6 +33,8 @@
 #include "hal/include/hal_usart_async.h"
 #include "hal/include/hal_gpio.h"
 
+#include "SEGGER_SYSVIEW.h"
+
 //--------------------------------------------------------------------+
 // MACRO TYPEDEF CONSTANT ENUM DECLARATION
 //--------------------------------------------------------------------+
@@ -105,6 +107,9 @@ void board_init(void)
 #if CFG_TUH_ENABLED
   gpio_set_pin_level(USB_HOST_POWER_PIN, true);
 # endif
+
+  SEGGER_SYSVIEW_Conf();
+  SEGGER_SYSVIEW_Start();
 }
 
 //--------------------------------------------------------------------+
