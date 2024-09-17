@@ -8,6 +8,9 @@ BUILD := _build/$(BOARD)
 PROJECT := $(notdir $(CURDIR))
 BIN := $(TOP)/_bin/$(BOARD)/$(notdir $(CURDIR))
 
+DEBUG := 1
+LOGGER := sysview
+
 # Handy check parameter function
 check_defined = \
     $(strip $(foreach 1,$1, \
@@ -105,7 +108,9 @@ CFLAGS += \
   -Wnull-dereference \
   -Wuninitialized \
   -Wunused \
-  -Wredundant-decls
+  -Wredundant-decls \
+  -Wno-error=float-equal \
+  -Wno-error=shift-count-overflow
   #-Wcast-qual \
 
 # conversion is too strict for most mcu driver, may be disable sign/int/arith-conversion
@@ -137,4 +142,10 @@ ifeq ($(LOGGER),rtt)
   SRC_C += $(RTT_SRC)/RTT/SEGGER_RTT.c
 else ifeq ($(LOGGER),swo)
   CFLAGS += -DLOGGER_SWO
+else ifeq ($(LOGGER),sysview)
+  CFLAGS += -DLOGGER_RTT -DSEGGER_RTT_MODE_DEFAULT=SEGGER_RTT_MODE_BLOCK_IF_FIFO_FULL
+  RTT_SRC = lib/segger_systemview
+  INC   += $(TOP)/$(RTT_SRC)/Config $(TOP)/$(RTT_SRC)/SEGGER
+  SRC_C += $(RTT_SRC)/SEGGER/SEGGER_RTT.c $(RTT_SRC)/SEGGER/SEGGER_SYSVIEW.c $(RTT_SRC)/Sample/NoOS/Config/Cortex-M/SEGGER_SYSVIEW_Config_NoOS.c
+  SRC_S += $(RTT_SRC)/SEGGER/SEGGER_RTT_ASM_ARMv7M.S
 endif
