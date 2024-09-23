@@ -334,6 +334,7 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
 {
   if ((((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_RXINI) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_RXINE)))
   {
+    SEGGER_SYSVIEW_RecordU32x3(10 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr);
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_RXINIC);
 
     if (hw_pipe_fifo_copy_in(rhport, pipe))
@@ -351,6 +352,7 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
 
   if (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_TXOUTI) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_TXOUTE))
   {
+    SEGGER_SYSVIEW_RecordU32x3(11 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr);
     // Clear transmit interrupt
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
     bool last = hw_pipe_fifo_copy_out(rhport, pipe);
@@ -375,6 +377,7 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
 
   if ((((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_NBUSYBK) == 0) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_NBUSYBKE))
   {
+    SEGGER_SYSVIEW_RecordU32x3(12 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr);
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC);
 
     if (hw_pipe_get_type(rhport, pipe) != TUSB_XFER_ISOCHRONOUS) // for isochornous pipes, this was done on tx out handling
@@ -395,6 +398,8 @@ bool hw_handle_ctrl_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_addr, uin
   static_assert(HSTPIPIMR_CTRL_TXSTPE == HSTPIPIMR_BLK_TXSTPE);
   if (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_CTRL_TXSTPI) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_CTRL_TXSTPE))
   {
+    SEGGER_SYSVIEW_RecordU32x3(7 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr);
+
     hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
     // Clear and disable setup packet interrupt
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_CTRL_TXSTPEC);
@@ -406,6 +411,8 @@ bool hw_handle_ctrl_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_addr, uin
 
   if ((((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_RXINI) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_RXINE)))
   {
+    SEGGER_SYSVIEW_RecordU32x3(8 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr);
+
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_RXINIC);
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_RXINEC);
 
@@ -424,6 +431,8 @@ bool hw_handle_ctrl_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_addr, uin
 
   if (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_TXOUTI) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_TXOUTE))
   {
+    SEGGER_SYSVIEW_RecordU32x3(9 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr);
+
     hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
     // Clear transmit interrupt
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
@@ -439,6 +448,8 @@ static bool hw_handle_dma_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_add
 {
   if (((((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_NBUSYBK) >> HSTPIPISR_NBUSYBK_Pos) == 0) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_NBUSYBKE))
   {
+    SEGGER_SYSVIEW_RecordU32x3(13 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr);
+
     hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC);
 
@@ -516,6 +527,8 @@ static bool hw_handle_dma_int(uint8_t rhport)
 
     uint8_t dev_addr = hw_pipe_get_dev_addr(rhport, pipe);
     uint8_t ep_addr = hw_pipe_get_ep_addr(rhport, pipe);
+
+    SEGGER_SYSVIEW_RecordU32x3(15 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr);
 
     if (ep_addr & TUSB_DIR_IN_MASK)
     {
@@ -711,6 +724,8 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
     return false;
   }
 
+  SEGGER_SYSVIEW_RecordU32x2(5 + TinyUSB.EventOffset, dev_addr, pipe);
+
   // Set pipe token to setup
   hw_pipe_set_token(rhport, pipe, HSTPIPCFG_PTOKEN_SETUP);
   // Clear setup token interrupt
@@ -802,6 +817,7 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
     return false;
   }
 
+
   // Configure the pipe
   hw_pipe_reset(rhport, pipe); // reset the pipe
 
@@ -886,6 +902,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
   pipe_xfers[pipe].dma = (pipe_xfers[pipe].total || (ep_addr & TUSB_DIR_IN_MASK))
                          && EP_DMA_SUPPORT(pipe) &&
                          hw_pipe_get_type(rhport, pipe) != TUSB_XFER_CONTROL;
+  SEGGER_SYSVIEW_RecordU32x6(6 + TinyUSB.EventOffset, dev_addr, ep_addr, pipe, (uint32_t)buffer, buflen, pipe_xfers[pipe].dma);
 
   if (pipe_xfers[pipe].dma)
   {

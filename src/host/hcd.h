@@ -198,10 +198,15 @@ void hcd_event_device_remove(uint8_t rhport, bool in_isr)
   hcd_event_handler(&event, in_isr);
 }
 
+#include "SEGGER_SYSVIEW.h"
+extern SEGGER_SYSVIEW_MODULE TinyUSB;
+
 // Helper to send USB transfer event
 TU_ATTR_ALWAYS_INLINE static inline
 void hcd_event_xfer_complete(uint8_t dev_addr, uint8_t ep_addr, uint32_t xferred_bytes, xfer_result_t result, bool in_isr)
 {
+  SEGGER_SYSVIEW_RecordU32x5(14 + TinyUSB.EventOffset, dev_addr, ep_addr, xferred_bytes, result, in_isr);
+
   hcd_event_t event =
   {
     .rhport   = 0, // TODO correct rhport
