@@ -61,7 +61,7 @@ static void tx_cb_EDBG_COM(const struct usart_async_descriptor *const io_descr)
 
 SEGGER_SYSVIEW_MODULE TinyUSB =
 {
-  "M=TinyUSB, 0 ISR Reg=%u, ",
+  "M=TinyUSB",
   1, // NumEvents
   0, // EventOffset, Set by SEGGER_SYSVIEW_RegisterModule()
   NULL, // pfSendModuleDesc, NULL: No additional module description

@@ -1,0 +1,9 @@
+#
+# Events for internal packet monitoring (IDs 520-539).
+#
+
+0   ISR                     	          Reg=0x%x   
+1   HCD_Attach                     	  Dev=%u   
+2   HCD_Xfer_Complete                     Dev=%u, Ep=%u, Res=%u, Len=%u 
+3   Enum                     		  State=%u
+4   HCD_Queue                     	  State=%u

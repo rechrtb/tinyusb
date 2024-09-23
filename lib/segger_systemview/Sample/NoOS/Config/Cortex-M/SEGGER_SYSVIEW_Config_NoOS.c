@@ -110,7 +110,7 @@ extern unsigned int SystemCoreClock;
 */
 static void _cbSendSystemDesc(void) {
   SEGGER_SYSVIEW_SendSysDesc("N="SYSVIEW_APP_NAME",D="SYSVIEW_DEVICE_NAME",O=NoOS");
-  SEGGER_SYSVIEW_SendSysDesc("I#15=SysTick, I#50=MyISR");
+  SEGGER_SYSVIEW_SendSysDesc("I#15=SysTick, I#50=USB");
 }
 
 /*********************************************************************
