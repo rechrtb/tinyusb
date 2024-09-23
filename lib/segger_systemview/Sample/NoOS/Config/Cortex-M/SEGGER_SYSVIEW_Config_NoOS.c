@@ -65,10 +65,10 @@ extern unsigned int SystemCoreClock;
 **********************************************************************
 */
 // The application name to be displayed in SystemViewer
-#define SYSVIEW_APP_NAME        "Demo Application"
+#define SYSVIEW_APP_NAME        "TinyUSB"
 
 // The target device name
-#define SYSVIEW_DEVICE_NAME     "Cortex-M4"
+#define SYSVIEW_DEVICE_NAME     "Cortex-M7"
 
 // Frequency of the timestamp. Must match SEGGER_SYSVIEW_Conf.h
 #define SYSVIEW_TIMESTAMP_FREQ  (SystemCoreClock)
@@ -109,8 +109,8 @@ extern unsigned int SystemCoreClock;
 *    Sends SystemView description strings.
 */
 static void _cbSendSystemDesc(void) {
-  SEGGER_SYSVIEW_SendSysDesc("N="SYSVIEW_APP_NAME",D="SYSVIEW_DEVICE_NAME);
-  SEGGER_SYSVIEW_SendSysDesc("I#15=SysTick");
+  SEGGER_SYSVIEW_SendSysDesc("N="SYSVIEW_APP_NAME",D="SYSVIEW_DEVICE_NAME",O=NoOS");
+  SEGGER_SYSVIEW_SendSysDesc("I#15=SysTick, I#50=MyISR");
 }
 
 /*********************************************************************

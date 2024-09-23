@@ -59,17 +59,13 @@ static void tx_cb_EDBG_COM(const struct usart_async_descriptor *const io_descr)
   uart_busy = false;
 }
 
-SEGGER_SYSVIEW_MODULE TinyUSBModule =
+SEGGER_SYSVIEW_MODULE TinyUSB =
 {
-  "M=TinyUSB, " \
-  "0 HCD Event Num=%u",
+  "M=TinyUSB, 0 ISR Reg=%u, ",
   1, // NumEvents
-  0,
-  // EventOffset, Set by SEGGER_SYSVIEW_RegisterModule()
-  NULL,
-  // pfSendModuleDesc, NULL: No additional module description
-  NULL,
-  // pNext, Set by SEGGER_SYSVIEW_RegisterModule()
+  0, // EventOffset, Set by SEGGER_SYSVIEW_RegisterModule()
+  NULL, // pfSendModuleDesc, NULL: No additional module description
+  NULL, // pNext, Set by SEGGER_SYSVIEW_RegisterModule()
 };
 
 //------------- IMPLEMENTATION -------------//
@@ -122,9 +118,8 @@ void board_init(void)
 # endif
 
   SEGGER_SYSVIEW_Conf();
+  SEGGER_SYSVIEW_RegisterModule(&TinyUSB);
   SEGGER_SYSVIEW_Start();
-
-  SEGGER_SYSVIEW_RegisterModule(&TinyUSBModule);
 }
 
 //--------------------------------------------------------------------+

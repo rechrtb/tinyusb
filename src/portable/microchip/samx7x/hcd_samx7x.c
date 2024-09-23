@@ -40,7 +40,7 @@
 
 #include "SEGGER_SYSVIEW.h"
 
-extern SEGGER_SYSVIEW_MODULE TinyUSBModule;
+extern SEGGER_SYSVIEW_MODULE TinyUSB;
 
 // Check that tusb_xfer_type_t has the same numerical value as the
 // peripheral definitions. This way, casting can be used instead of conditionals
@@ -966,15 +966,12 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
   return true;
 }
 
-uint32_t isr[2048];
-volatile uint32_t isr_idx = 0;
-
 void hcd_int_handler(uint8_t rhport)
 {
-
   #define RET_IF_TRUE(fn)      if (fn) {  SEGGER_SYSVIEW_RecordExitISR(); return; }
 
   SEGGER_SYSVIEW_RecordEnterISR();
+  SEGGER_SYSVIEW_RecordU32(0 + TinyUSB.EventOffset, USB_REG->HSTCTRL);
 
   // Change to low power mode to only use the 48 MHz clock during low-speed
   if (hcd_port_speed_get(rhport) == TUSB_SPEED_LOW &&
