@@ -988,7 +988,7 @@ void hcd_int_handler(uint8_t rhport)
   #define RET_IF_TRUE(fn)      if (fn) {  SEGGER_SYSVIEW_RecordExitISR(); return; }
 
   SEGGER_SYSVIEW_RecordEnterISR();
-  SEGGER_SYSVIEW_RecordU32(0 + TinyUSB.EventOffset, USB_REG->HSTCTRL);
+  SEGGER_SYSVIEW_RecordU32(0 + TinyUSB.EventOffset, USB_REG->HSTISR);
 
   // Change to low power mode to only use the 48 MHz clock during low-speed
   if (hcd_port_speed_get(rhport) == TUSB_SPEED_LOW &&
@@ -1016,6 +1016,7 @@ void hcd_int_handler(uint8_t rhport)
   }
 
   TU_ASSERT(false, ); // error condition
+  SEGGER_SYSVIEW_RecordExitISR();
 }
 
 #endif

@@ -428,7 +428,7 @@ void tuh_task_ext(uint32_t timeout_ms, bool in_isr)
         // TODO due to the shared _usbh_ctrl_buf, we must complete enumerating
         // one device before enumerating another one.
         TU_LOG2("[%u:] USBH DEVICE ATTACH\r\n", event.rhport);
-        SEGGER_SYSVIEW_RecordU32(1 + TinyUSB.EventOffset, event.dev_addr);
+        SEGGER_SYSVIEW_RecordU32(1 + TinyUSB.EventOffset, event.rhport);
         enum_new_device(&event);
       break;
 

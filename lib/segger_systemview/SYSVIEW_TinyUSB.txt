@@ -2,19 +2,19 @@
 # Events for internal packet monitoring (IDs 520-539).
 #
 
-0   ISR                     	      Reg=0x%x   
-1   Handle_Attach                     Dev=%u   
-2   Handle_Xfer_Complete              Dev=%u, Ep=%u, Res=%u, Len=%u 
+0   ISR                     	      Reg=0x%x
+1   Handle_Attach                     Port=%u
+2   Handle_Xfer_Complete              Dev=%u, Ep=%u, Res=%u, Len=%u
 3   Setup_State                       State=%u
 4   Queue_Event                       Event=%u
 5   Setup                     	      Dev=%u, Pipe=%u
-6   Xfer                     	      Dev=%u, Ep=%u, Pipe=%u, Buffer=0x%x, Len=%u, Dma=%u 
+6   Xfer                     	      Dev=%u, Ep=%u, Pipe=%u, Buffer=0x%x, Len=%u, Dma=%u
 7   Ctrl_Pipe_Stp                     Pipe=%u, Dev=%u, Ep=%u
 8   Ctrl_Pipe_In                      Pipe=%u, Dev=%u, Ep=%u
-9   Ctrl_Pipe_Out                     Pipe=%u, Dev=%u, Ep=%u 
-10   Fifo_Pipe_In                     Pipe=%u, Dev=%u, Ep=%u 
-11   Fifo_Pipe_Out                    Pipe=%u, Dev=%u, Ep=%u  
-12   Fifo_Pipe_Busy                   Pipe=%u, Dev=%u, Ep=%u 
-13   Dma_Pipe_Int                     Pipe=%u, Dev=%u, Ep=%u 
-14   Xfer_complete                    Dev=%u, Ep=%u, Len=%u, Res=%u, Isr=%u 
-14   Dma_Int                          Pipe=%u, Dev=%u, Ep=%u 
+9   Ctrl_Pipe_Out                     Pipe=%u, Dev=%u, Ep=%u
+10   Fifo_Pipe_In                     Pipe=%u, Dev=%u, Ep=%u
+11   Fifo_Pipe_Out                    Pipe=%u, Dev=%u, Ep=%u
+12   Fifo_Pipe_Busy                   Pipe=%u, Dev=%u, Ep=%u
+13   Dma_Pipe_Int                     Pipe=%u, Dev=%u, Ep=%u
+14   Xfer_complete                    Dev=%u, Ep=%u, Len=%u, Res=%u, Isr=%u
+15   Dma_Int                          Pipe=%u, Dev=%u, Ep=%u
