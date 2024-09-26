@@ -698,6 +698,7 @@ bool hcd_init(uint8_t rhport)
 
 void hcd_device_close(uint8_t rhport, uint8_t dev_addr)
 {
+  SEGGER_SYSVIEW_RecordU32(17 + TinyUSB.EventOffset, dev_addr);
   // Reset every pipe associated with the device
   for (uint8_t i = 0; i < EP_MAX; i++)
   {
@@ -817,7 +818,6 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
     return false;
   }
 
-
   // Configure the pipe
   hw_pipe_reset(rhport, pipe); // reset the pipe
 
@@ -862,6 +862,8 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
   cfg |= HSTPIPCFG_ALLOC; // alloc dpram for pipe
   hw_pipe_enable(rhport, pipe, true);
   USB_REG->HSTPIPCFG[pipe] = cfg; // write prepared configuration
+
+  SEGGER_SYSVIEW_RecordU32x7(16 + TinyUSB.EventOffset, dev_addr, ep_desc->bEndpointAddress, pipe, ep_desc->wMaxPacketSize, ep_desc->bInterval, ep_desc->bmAttributes.xfer, USB_REG->HSTPIPCFG[pipe]);
 
   if (USB_REG->HSTPIPISR[pipe] & HSTPIPISR_CFGOK) // check if pipe enabling succeeded with ok configuration
   {
