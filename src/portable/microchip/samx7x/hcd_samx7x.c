@@ -51,13 +51,7 @@ static_assert(TUSB_XFER_CONTROL == HSTPIPCFG_PTYPE_CTRL_Val &&
               TUSB_XFER_INTERRUPT == HSTPIPCFG_PTYPE_INTRPT_Val);
 
 
-#ifndef USE_DUAL_BANK
-#  if ((CFG_TUH_MAX_SPEED == OPT_MODE_DEFAULT_SPEED) || (CFG_TUH_MAX_SPEED == OPT_MODE_HIGH_SPEED))
-#    define USE_DUAL_BANK   0
-#  else
-#    define USE_DUAL_BANK   1
-#  endif
-#endif
+#define USE_DUAL_BANK 0 // do not support dual bank for now
 
 uint8_t hw_events[1024];
 volatile uint32_t hw_events_idx = 0;
