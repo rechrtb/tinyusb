@@ -469,6 +469,8 @@ static bool hw_handle_pipe_int(uint8_t rhport)
     uint8_t dev_addr = hw_pipe_get_dev_addr(rhport, pipe);
     uint8_t ep_addr = hw_pipe_get_ep_addr(rhport, pipe);
 
+    SEGGER_SYSVIEW_RecordU32x3(18 + TinyUSB.EventOffset, pipe, USB_REG->HSTPIPISR[pipe], USB_REG->HSTPIPIMR[pipe]);
+
     bool handled = hw_pipe_get_type(rhport, pipe) == TUSB_XFER_CONTROL ? hw_handle_ctrl_pipe_int(rhport, pipe, dev_addr, ep_addr) :
                    pipe_xfers[pipe].dma ? hw_handle_dma_pipe_int(rhport, pipe, dev_addr, ep_addr) :
                    hw_handle_fifo_pipe_int(rhport, pipe, dev_addr, ep_addr);
