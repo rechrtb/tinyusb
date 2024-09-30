@@ -841,7 +841,13 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
     {
       interval = 16;
     }
-    uint16_t ms = 1 << (interval - 1);
+    else if (interval < 1)
+    {
+      interval = 1;
+    }
+    else { }
+
+    uint16_t ms = ((1 << (interval - 1)) >> 3);
     interval = ms > 0xFF ? 0xFF : ms;
   }
 
