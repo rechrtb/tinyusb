@@ -326,6 +326,7 @@ static bool hw_pipe_fifo_copy_in(uint8_t rhport, uint8_t pipe)
 
 static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_addr, uint8_t ep_addr)
 {
+
   if ((((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_RXINI) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_RXINE)))
   {
     SEGGER_SYSVIEW_RecordU32x3(10 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr);
@@ -469,7 +470,7 @@ static bool hw_handle_pipe_int(uint8_t rhport)
     uint8_t dev_addr = hw_pipe_get_dev_addr(rhport, pipe);
     uint8_t ep_addr = hw_pipe_get_ep_addr(rhport, pipe);
 
-    SEGGER_SYSVIEW_RecordU32x3(18 + TinyUSB.EventOffset, pipe, USB_REG->HSTPIPISR[pipe], USB_REG->HSTPIPIMR[pipe]);
+    SEGGER_SYSVIEW_RecordU32x3(15 + TinyUSB.EventOffset, pipe, USB_REG->HSTPIPISR[pipe], USB_REG->HSTPIPIMR[pipe]);
 
     bool handled = hw_pipe_get_type(rhport, pipe) == TUSB_XFER_CONTROL ? hw_handle_ctrl_pipe_int(rhport, pipe, dev_addr, ep_addr) :
                    pipe_xfers[pipe].dma ? hw_handle_dma_pipe_int(rhport, pipe, dev_addr, ep_addr) :
@@ -523,8 +524,6 @@ static bool hw_handle_dma_int(uint8_t rhport)
 
     uint8_t dev_addr = hw_pipe_get_dev_addr(rhport, pipe);
     uint8_t ep_addr = hw_pipe_get_ep_addr(rhport, pipe);
-
-    SEGGER_SYSVIEW_RecordU32x3(15 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr);
 
     if (ep_addr & TUSB_DIR_IN_MASK)
     {
@@ -959,6 +958,8 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
   }
   else
   {
+    SEGGER_SYSVIEW_RecordU32x3(15 + TinyUSB.EventOffset, pipe, USB_REG->HSTPIPISR[pipe], USB_REG->HSTPIPIMR[pipe]);
+
     bool in = ep_addr & TUSB_DIR_IN_MASK;
 
     USB_REG->HSTPIPCFG[pipe] &= ~HSTPIPCFG_AUTOSW;

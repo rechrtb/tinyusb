@@ -17,6 +17,6 @@
 12   Fifo_Pipe_Busy                   Pipe=%u, Dev=%u, Ep=%u
 13   Dma_Pipe_Int                     Pipe=%u, Dev=%u, Ep=%u
 14   Xfer_complete                    Dev=%u, Ep=%u, Len=%u, Res=%u, Isr=%u
-15   Dma_Int                          Pipe=%u, Dev=%u, Ep=%u
+15   Pipe_Status                      Pipe=%u, Stat=0x%x, Mask=0x%x
 16   Open_Pipe                        Dev=%u, Ep=%u, Pipe=%u, MaxSize=%u, Interval=%u, Type=%u, CfgReg=%u
 17   Close_Device                     Dev=%u
