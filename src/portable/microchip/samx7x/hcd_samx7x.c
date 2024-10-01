@@ -850,6 +850,13 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
     interval = ms > 0xFF ? 0xFF : ms;
   }
 
+  bool ping = (hcd_port_speed_get(rhport) == TUSB_SPEED_HIGH) && 
+                (type == TUSB_XFER_CONTROL || (type == TUSB_XFER_BULK && !in));
+
+  if (ping)
+  {
+    cfg |= HSTPIPCFG_CTRL_BULK_PINGEN;
+  }
   cfg |= interval << HSTPIPCFG_INTFRQ_Pos;
 
   cfg |= HSTPIPCFG_PBK_1_BANK;
