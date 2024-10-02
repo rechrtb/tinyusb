@@ -490,7 +490,6 @@ static bool hw_handle_pipe_int(uint8_t rhport)
   return false;
 }
 
-
 static bool hw_handle_dma_int(uint8_t rhport)
 {
   uint8_t pipe = hw_pipe_dma_interrupt(rhport);
@@ -504,6 +503,9 @@ static bool hw_handle_dma_int(uint8_t rhport)
     {
       return true; // ignore EOT_STA interrupt
     }
+
+    SEGGER_SYSVIEW_RecordU32x5(10 + TinyUSB.EventOffset, pipe, channel, USB_REG->HSTDMA[channel].HSTDMASTATUS, USB_REG->HSTDMA[channel].HSTDMACONTROL, USB_REG->HSTDMA[channel].HSTDMAADDRESS);
+
 
     uint8_t dev_addr = hw_pipe_get_dev_addr(rhport, pipe);
     uint8_t ep_addr = hw_pipe_get_ep_addr(rhport, pipe);
@@ -910,7 +912,6 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
     USB_REG->HSTPIPCFG[pipe] |= HSTPIPCFG_AUTOSW;
 
     uint32_t dma_ctrl = USBHS_HSTDMACONTROL_BUFF_LENGTH(pipe_xfers[pipe].total);
-
     uint16_t pipe_size = hw_pipe_get_size(rhport, pipe);
     if (ep_addr & TUSB_DIR_IN_MASK)
     {
@@ -937,7 +938,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 
     uint16_t inrq = (((pipe_xfers[pipe].total + (pipe_size - 1)) / pipe_size) - 1);
 
-    SEGGER_SYSVIEW_RecordU32x5(12 + TinyUSB.EventOffset, dev_addr, ep_addr, pipe, dma_ctrl, inrq);
+    SEGGER_SYSVIEW_RecordU32x5(12 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr, dma_ctrl, inrq);
 
     uint32_t flags = 0;
     hw_enter_critical(&flags);
