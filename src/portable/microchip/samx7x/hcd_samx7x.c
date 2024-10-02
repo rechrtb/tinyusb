@@ -887,6 +887,59 @@ bool hcd_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const 
   return false;
 }
 
+
+bool hw_prepare_dma_xfer(uint8_t rhport, uint8_t pipe, uint8_t ep_addr, uint8_t dev_addr)
+{
+  pipe_xfers[pipe].total += pipe_xfers[pipe].queued;
+
+  uint16_t remain = pipe_xfers[pipe].total - pipe_xfers[pipe].done;
+
+  if (remain)
+  {
+    uint16_t pipe_size = hw_pipe_get_size(rhport, pipe);
+
+    uint16_t next = remain < pipe_size ? remain : pipe_size;
+    uint8_t *buf = &pipe_xfers[pipe].buffer[pipe_xfers[pipe].done];
+
+    uint32_t dma_ctrl = USBHS_HSTDMACONTROL_BUFF_LENGTH(next);
+
+    if (ep_addr & TUSB_DIR_IN_MASK)
+    {
+      hw_dcache_invalidate_prepare(buf, next);
+      if (hw_pipe_get_type(rhport, pipe) != TUSB_XFER_ISOCHRONOUS || next <= pipe_size)
+      {
+        dma_ctrl |= HSTDMACONTROL_END_TR_IT | HSTDMACONTROL_END_TR_EN; // enable short packet reception
+      }
+    }
+    else
+    {
+      hw_dcache_flush(buf, next);
+      if (next % pipe_size != 0)
+      {
+        dma_ctrl |= HSTDMACONTROL_END_B_EN; // enable short packet option
+      }
+    }
+
+    uint8_t channel = pipe - 1;
+    USB_REG->HSTDMA[channel].HSTDMAADDRESS = (uint32_t)(buf);
+    dma_ctrl |= HSTDMACONTROL_END_BUFFIT | HSTDMACONTROL_CHANN_ENB;
+
+    SEGGER_SYSVIEW_RecordU32x4(12 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr, dma_ctrl);
+
+    uint32_t flags = 0;
+    hw_enter_critical(&flags);
+    if (!(USB_REG->HSTDMA[channel].HSTDMASTATUS & HSTDMASTATUS_END_TR_ST))
+    {
+      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC | HSTPIPIDR_PFREEZEC);
+      USB_REG->HSTDMA[channel].HSTDMACONTROL = dma_ctrl;
+    }
+    hw_exit_critical(&flags);
+    return true;
+  }
+
+  return false;
+}
+
 bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *buffer, uint16_t buflen)
 {
   uint8_t pipe = 0;
@@ -905,58 +958,13 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
   pipe_xfers[pipe].dma = (pipe_xfers[pipe].total || (ep_addr & TUSB_DIR_IN_MASK))
                          && EP_DMA_SUPPORT(pipe) &&
                          hw_pipe_get_type(rhport, pipe) != TUSB_XFER_CONTROL;
+
   SEGGER_SYSVIEW_RecordU32x6(6 + TinyUSB.EventOffset, dev_addr, ep_addr, pipe, (uint32_t)buffer, buflen, pipe_xfers[pipe].dma);
 
   if (pipe_xfers[pipe].dma)
   {
     USB_REG->HSTPIPCFG[pipe] |= HSTPIPCFG_AUTOSW;
-
-    uint32_t dma_ctrl = USBHS_HSTDMACONTROL_BUFF_LENGTH(pipe_xfers[pipe].total);
-    uint16_t pipe_size = hw_pipe_get_size(rhport, pipe);
-    if (ep_addr & TUSB_DIR_IN_MASK)
-    {
-      hw_dcache_invalidate_prepare(pipe_xfers[pipe].buffer, pipe_xfers[pipe].total);
-      if (hw_pipe_get_type(rhport, pipe) != TUSB_XFER_ISOCHRONOUS ||
-          pipe_xfers[pipe].total <= pipe_size)
-      {
-        // Enable short packet reception
-        dma_ctrl |= HSTDMACONTROL_END_TR_IT | HSTDMACONTROL_END_TR_EN;
-      }
-    }
-    else
-    {
-      hw_dcache_flush(pipe_xfers[pipe].buffer, pipe_xfers[pipe].total);
-      if (pipe_xfers[pipe].total % pipe_size != 0)
-      {
-        dma_ctrl |= HSTDMACONTROL_END_B_EN;
-      }
-    }
-
-    uint8_t channel = pipe - 1;
-    USB_REG->HSTDMA[channel].HSTDMAADDRESS = (uint32_t)(pipe_xfers[pipe].buffer);
-    dma_ctrl |= HSTDMACONTROL_END_BUFFIT | HSTDMACONTROL_CHANN_ENB;
-
-    uint16_t inrq = (((pipe_xfers[pipe].total + (pipe_size - 1)) / pipe_size) - 1);
-
-    SEGGER_SYSVIEW_RecordU32x5(12 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr, dma_ctrl, inrq);
-
-    uint32_t flags = 0;
-    hw_enter_critical(&flags);
-    if (!(USB_REG->HSTDMA[channel].HSTDMASTATUS & HSTDMASTATUS_END_TR_ST))
-    {
-      if (ep_addr & TUSB_DIR_IN_MASK)
-      {
-        USB_REG->HSTPIPINRQ[pipe] = HSTPIPINRQ_INRQ & (inrq << HSTPIPINRQ_INRQ_Pos);
-      }
-      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC | HSTPIPIDR_PFREEZEC);
-      USB_REG->HSTDMA[channel].HSTDMACONTROL = dma_ctrl;
-      hw_exit_critical(&flags);
-    }
-    else
-    {
-      hw_exit_critical(&flags);
-      return false;
-    }
+    hw_prepare_dma_xfer(rhport, pipe, ep_addr, dev_addr);
   }
   else
   {
