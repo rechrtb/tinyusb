@@ -935,14 +935,17 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
     USB_REG->HSTDMA[channel].HSTDMAADDRESS = (uint32_t)(pipe_xfers[pipe].buffer);
     dma_ctrl |= HSTDMACONTROL_END_BUFFIT | HSTDMACONTROL_CHANN_ENB;
 
+    uint16_t inrq = (((pipe_xfers[pipe].total + (pipe_size - 1)) / pipe_size) - 1);
+
+    SEGGER_SYSVIEW_RecordU32x5(12 + TinyUSB.EventOffset, dev_addr, ep_addr, pipe, dma_ctrl, inrq);
+
     uint32_t flags = 0;
     hw_enter_critical(&flags);
     if (!(USB_REG->HSTDMA[channel].HSTDMASTATUS & HSTDMASTATUS_END_TR_ST))
     {
       if (ep_addr & TUSB_DIR_IN_MASK)
       {
-        USB_REG->HSTPIPINRQ[pipe] = HSTPIPINRQ_INRQ &
-          ((((pipe_xfers[pipe].total + (pipe_size - 1)) / pipe_size) - 1) << HSTPIPINRQ_INRQ_Pos);
+        USB_REG->HSTPIPINRQ[pipe] = HSTPIPINRQ_INRQ & (inrq << HSTPIPINRQ_INRQ_Pos);
       }
       hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC | HSTPIPIDR_PFREEZEC);
       USB_REG->HSTDMA[channel].HSTDMACONTROL = dma_ctrl;
