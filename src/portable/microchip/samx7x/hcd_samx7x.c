@@ -69,6 +69,7 @@ typedef struct
   uint8_t *buffer;
   uint16_t total;
   uint16_t done;
+  uint16_t queued;
   bool dma;
 } hw_pipe_xfer_t;
 
@@ -284,6 +285,10 @@ static tusb_xfer_type_t hw_pipe_get_type(uint16_t rhport, uint8_t pipe)
 
 static bool hw_pipe_fifo_copy_out(uint8_t rhport, uint8_t pipe)
 {
+  // Update done 
+  pipe_xfers[pipe].done += pipe_xfers[pipe].queued;
+  pipe_xfers[pipe].queued = 0;
+
   uint32_t remain = pipe_xfers[pipe].total - pipe_xfers[pipe].done;
   uint16_t pipe_size = hw_pipe_get_size(rhport, pipe);
 
@@ -297,12 +302,10 @@ static bool hw_pipe_fifo_copy_out(uint8_t rhport, uint8_t pipe)
     {
       *dst++ = *src++;
     }
-    pipe_xfers[pipe].done += next;
+    pipe_xfers[pipe].queued = next;
   }
 
-  // Returns if last segment to transmit: the last segment has been copied to
-  // the FIFO or the current segment is short.
-  return pipe_xfers[pipe].done >= pipe_xfers[pipe].total || next < pipe_size;
+  return !next;
 }
 
 static bool hw_pipe_fifo_copy_in(uint8_t rhport, uint8_t pipe)
@@ -337,7 +340,6 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
       hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
       hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_RXINEC);
       USB_REG->HSTPIPINRQ[pipe] &= ~HSTPIPINRQ_INMODE;
-      USB_REG->HSTIDR = ((HSTISR_PEP_0) << pipe);
       hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].done, XFER_RESULT_SUCCESS, true);
     }
 
@@ -350,37 +352,18 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
     SEGGER_SYSVIEW_RecordU32x3(11 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr);
     // Clear transmit interrupt
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
-    bool last = hw_pipe_fifo_copy_out(rhport, pipe);
-    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
+    bool done = hw_pipe_fifo_copy_out(rhport, pipe);
 
-    if (last) // on last segment, wait for banks to be empty if not isochronous
+    if (done)
     {
       hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_TXOUTEC);
-      if (hw_pipe_get_type(rhport, pipe) == TUSB_XFER_ISOCHRONOUS) // for isochronous pipes, no need for ack
-      {
-        hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
-        USB_REG->HSTIDR = ((HSTISR_PEP_0) << pipe);
-        hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].done, XFER_RESULT_SUCCESS, true);
-      }
-      else
-      {
-        hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_NBUSYBKES);
-      }
-    }
-    return true;
-  }
-
-  if ((((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_NBUSYBK) == 0) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_NBUSYBKE))
-  {
-    SEGGER_SYSVIEW_RecordU32x3(12 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr);
-    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC);
-
-    if (hw_pipe_get_type(rhport, pipe) != TUSB_XFER_ISOCHRONOUS) // for isochornous pipes, this was done on tx out handling
-    {
-      hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
-      USB_REG->HSTIDR = ((HSTISR_PEP_0) << pipe);
       hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].done, XFER_RESULT_SUCCESS, true);
     }
+    else
+    {
+      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
+    }
+
     return true;
   }
 
@@ -914,6 +897,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
   pipe_xfers[pipe].buffer = buffer;
   pipe_xfers[pipe].total = buflen;
   pipe_xfers[pipe].done = 0;
+  pipe_xfers[pipe].queued = 0;
 
   // Use DMA for non-ZLP out transfers on supported, non-control pipes.
   pipe_xfers[pipe].dma = (pipe_xfers[pipe].total || (ep_addr & TUSB_DIR_IN_MASK))
@@ -992,10 +976,11 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
       }
       else
       {
+        hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
+        hw_pipe_fifo_copy_out(rhport, pipe);
         hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_TXOUTES);
-        hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC);
+        hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
       }
-      USB_REG->HSTIER = (HSTISR_PEP_0) << pipe;
     }
   }
 
