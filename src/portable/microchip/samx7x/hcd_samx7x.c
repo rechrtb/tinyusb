@@ -737,8 +737,8 @@ static void hw_pipe_ctrl_xfer(uint8_t rhport, uint8_t pipe, bool in)
   else
   {
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
-    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_TXOUTES);
     hw_pipe_fifo_copy_out(rhport, pipe);
+    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_TXOUTES);
   }
   hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC | HSTPIPIDR_FIFOCONC);
 }
@@ -968,7 +968,6 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
     }
     else
     {
-      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
       if (ep_addr & TUSB_DIR_IN_MASK)
       {
         USB_REG->HSTPIPINRQ[pipe] |= HSTPIPINRQ_INMODE;
@@ -979,8 +978,8 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
         hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
         hw_pipe_fifo_copy_out(rhport, pipe);
         hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_TXOUTES);
-        hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC);
       }
+      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_FIFOCONC | HSTPIPIDR_PFREEZEC);
     }
   }
 
