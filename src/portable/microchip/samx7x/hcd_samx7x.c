@@ -332,7 +332,7 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
 
   if ((((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_RXINI) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_RXINE)))
   {
-    SEGGER_SYSVIEW_RecordU32x3(10 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr);
+    SEGGER_SYSVIEW_RecordU32x4(8 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr, false);
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_RXINIC);
 
     if (hw_pipe_fifo_copy_in(rhport, pipe))
@@ -349,7 +349,7 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
 
   if (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_TXOUTI) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_TXOUTE))
   {
-    SEGGER_SYSVIEW_RecordU32x3(11 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr);
+    SEGGER_SYSVIEW_RecordU32x4(9 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr, false);
     // Clear transmit interrupt
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
     bool done = hw_pipe_fifo_copy_out(rhport, pipe);
@@ -389,7 +389,7 @@ bool hw_handle_ctrl_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_addr, uin
 
   if ((((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_RXINI) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_RXINE)))
   {
-    SEGGER_SYSVIEW_RecordU32x3(8 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr);
+    SEGGER_SYSVIEW_RecordU32x4(8 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr, true);
 
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_RXINIC);
     hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_RXINEC);
@@ -409,7 +409,7 @@ bool hw_handle_ctrl_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_addr, uin
 
   if (((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_TXOUTI) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_TXOUTE))
   {
-    SEGGER_SYSVIEW_RecordU32x3(9 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr);
+    SEGGER_SYSVIEW_RecordU32x4(9 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr, true);
 
     hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
     // Clear transmit interrupt
