@@ -529,28 +529,6 @@ bool hw_handle_ctrl_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_addr, uin
   return false;
 }
 
-static bool hw_handle_dma_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_addr, uint8_t ep_addr)
-{
-  if (((((USB_REG->HSTPIPISR[pipe]) & HSTPIPISR_NBUSYBK) >> HSTPIPISR_NBUSYBK_Pos) == 0) && ((USB_REG->HSTPIPIMR[pipe]) & HSTPIPIMR_NBUSYBKE))
-  {
-    SEGGER_SYSVIEW_RecordU32x3(13 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr);
-
-    hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
-    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC);
-
-    if (hw_pipe_get_type(rhport, pipe) != TUSB_XFER_ISOCHRONOUS)
-    {
-      // For OUT isochronous pipes, already sent transfer complete event
-      // during DMA interrupt handling.
-      hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
-    }
-
-    return true;
-  }
-
-  return false;
-}
-
 static bool hw_handle_pipe_int(uint8_t rhport)
 {
   uint8_t pipe = hw_pipe_interrupt(rhport);
@@ -562,9 +540,7 @@ static bool hw_handle_pipe_int(uint8_t rhport)
 
     SEGGER_SYSVIEW_RecordU32x3(15 + TinyUSB.EventOffset, pipe, USB_REG->HSTPIPISR[pipe], USB_REG->HSTPIPIMR[pipe]);
 
-    bool handled = hw_pipe_get_type(rhport, pipe) == TUSB_XFER_CONTROL ? hw_handle_ctrl_pipe_int(rhport, pipe, dev_addr, ep_addr) :
-                   pipe_xfers[pipe].dma ? hw_handle_dma_pipe_int(rhport, pipe, dev_addr, ep_addr) :
-                   hw_handle_fifo_pipe_int(rhport, pipe, dev_addr, ep_addr);
+    bool handled = hw_pipe_get_type(rhport, pipe) == TUSB_XFER_CONTROL ? hw_handle_ctrl_pipe_int(rhport, pipe, dev_addr, ep_addr) : hw_handle_fifo_pipe_int(rhport, pipe, dev_addr, ep_addr);
 
     if (!handled)
     {
@@ -642,16 +618,6 @@ static bool hw_handle_dma_int(uint8_t rhport)
         hw_dcache_invalidate(pipe_xfers[pipe].buffer, xfered);
       }
       hcd_event_xfer_complete(dev_addr, ep_addr, xfered, XFER_RESULT_SUCCESS, true);
-    }
-    else
-    {
-      // Turn on busy bank interrupt. For pipes other than isochronous OUT,
-      // the transfer complete event is handled there.
-      hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_NBUSYBKES);
-      if (hw_pipe_get_type(rhport, pipe) == TUSB_XFER_ISOCHRONOUS)
-      {
-        hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].total, XFER_RESULT_SUCCESS, true);
-      }
     }
     return true;
   }
@@ -1040,11 +1006,6 @@ bool hw_prepare_dma_xfer(uint8_t rhport, uint8_t pipe, uint8_t ep_addr, uint8_t 
     hw_enter_critical(&flags);
     if (!(USB_REG->HSTDMA[channel].HSTDMASTATUS & HSTDMASTATUS_END_TR_ST))
     {
-      if (!(ep_addr & TUSB_DIR_IN_MASK))
-      {
-        hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
-        hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_TXOUTES);
-      }
       hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
       USB_REG->HSTDMA[channel].HSTDMACONTROL = dma_ctrl;
     }
@@ -1080,7 +1041,14 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
   if (pipe_xfers[pipe].dma)
   {
     USB_REG->HSTPIPCFG[pipe] |= HSTPIPCFG_AUTOSW;
-    hw_prepare_dma_xfer(rhport, pipe, ep_addr, dev_addr);
+    if (in)
+    {
+      hw_prepare_dma_xfer(rhport, pipe, ep_addr, dev_addr);
+    }
+    else
+    {
+      hw_pipe_prepare_out(rhport, pipe);
+    }
   }
   else
   {
