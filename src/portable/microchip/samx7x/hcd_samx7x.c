@@ -330,13 +330,13 @@ void hw_pipe_dma_xfer(uint8_t rhport, uint8_t pipe, bool in)
     if (pipe_xfers[pipe].queued % pipe_size != 0)
     {
       // Enable short packet option
-      dma_ctrl |= HSTDMACONTROL_END_B_EN;
+      dma_ctrl |=  HSTDMACONTROL_END_B_EN;
     }
   }
 
   uint8_t channel = pipe - 1;
   USB_REG->HSTDMA[channel].HSTDMAADDRESS = (uint32_t)(buf);
-  dma_ctrl |= HSTDMACONTROL_CHANN_ENB;
+  dma_ctrl |= HSTDMACONTROL_END_BUFFIT | HSTDMACONTROL_CHANN_ENB;
 
   SEGGER_SYSVIEW_RecordU32x2(12 + TinyUSB.EventOffset, pipe, dma_ctrl);
   SEGGER_SYSVIEW_RecordU32x3(15 + TinyUSB.EventOffset, pipe, USB_REG->HSTPIPISR[pipe], USB_REG->HSTPIPIMR[pipe]);
@@ -1034,7 +1034,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
     USB_REG->HSTPIPCFG[pipe] |= HSTPIPCFG_AUTOSW;
     if (in)
     {
-      hw_prepare_dma_xfer(rhport, pipe, ep_addr, dev_addr);
+      hw_pipe_prepare_in(rhport, pipe);
     }
     else
     {
