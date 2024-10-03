@@ -276,7 +276,6 @@ static uint16_t hw_compute_psize(uint16_t size)
   return 7;
 }
 
-
 static tusb_xfer_type_t hw_pipe_get_type(uint16_t rhport, uint8_t pipe)
 {
   (void) rhport;
@@ -336,7 +335,12 @@ void hw_pipe_dma_xfer(uint8_t rhport, uint8_t pipe, bool in)
 
   uint8_t channel = pipe - 1;
   USB_REG->HSTDMA[channel].HSTDMAADDRESS = (uint32_t)(buf);
-  dma_ctrl |= HSTDMACONTROL_END_BUFFIT | HSTDMACONTROL_CHANN_ENB;
+  dma_ctrl |= HSTDMACONTROL_CHANN_ENB;
+
+  if (in)
+  {
+    dma_ctrl |= HSTDMACONTROL_END_BUFFIT;
+  }
 
   SEGGER_SYSVIEW_RecordU32x2(12 + TinyUSB.EventOffset, pipe, dma_ctrl);
   SEGGER_SYSVIEW_RecordU32x3(15 + TinyUSB.EventOffset, pipe, USB_REG->HSTPIPISR[pipe], USB_REG->HSTPIPIMR[pipe]);
@@ -455,6 +459,7 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
     {
       hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
       hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_TXOUTEC);
+      USB_REG->HSTIER &= ~((HSTISR_DMA_0 >> 1) << pipe);
       hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].done, XFER_RESULT_SUCCESS, true);
     }
     else
@@ -608,6 +613,7 @@ static bool hw_handle_dma_int(uint8_t rhport)
       {
         hw_dcache_invalidate(pipe_xfers[pipe].buffer, xfered);
       }
+      USB_REG->HSTIER &= ~((HSTISR_DMA_0 >> 1) << pipe);
       hcd_event_xfer_complete(dev_addr, ep_addr, xfered, XFER_RESULT_SUCCESS, true);
     }
     return true;
@@ -976,6 +982,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
   if (pipe_xfers[pipe].dma)
   {
     USB_REG->HSTPIPCFG[pipe] |= HSTPIPCFG_AUTOSW;
+    USB_REG->HSTIER |= (HSTISR_DMA_0 >> 1) << pipe;
     if (in)
     {
       hw_pipe_prepare_in(rhport, pipe);
@@ -1018,7 +1025,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
 
 void hcd_int_handler(uint8_t rhport)
 {
-  #define RET_IF_TRUE(fn)      if (fn) {  SEGGER_SYSVIEW_RecordExitISR(); return; }
+  #define RET_IF_TRUE(fn)      if (fn) {  /*SEGGER_SYSVIEW_RecordExitISR();*/ return; }
 
   SEGGER_SYSVIEW_RecordEnterISR();
   SEGGER_SYSVIEW_RecordU32(0 + TinyUSB.EventOffset, USB_REG->HSTISR);
