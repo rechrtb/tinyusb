@@ -438,9 +438,7 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
 
     if (hw_pipe_fifo_copy_in(rhport, pipe))
     {
-      hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
       hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_RXINEC);
-      USB_REG->HSTPIPINRQ[pipe] &= ~HSTPIPINRQ_INMODE;
       hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].done, XFER_RESULT_SUCCESS, true);
     }
 
@@ -1060,7 +1058,6 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
     {
       if (in)
       {
-        USB_REG->HSTPIPINRQ[pipe] |= HSTPIPINRQ_INMODE;
         hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_RXINES);
       }
       else
