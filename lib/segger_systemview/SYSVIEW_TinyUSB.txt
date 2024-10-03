@@ -13,7 +13,7 @@
 8   Pipe_In                           Pipe=%u, Dev=%u, Ep=%u, Ctrl=%u
 9   Pipe_Out                          Pipe=%u, Dev=%u, Ep=%u, Ctrl=%u
 10   Dma_Int                          Pipe=%u, Chan=%u, Stat=0x%x, Control=0x%x, Addr=0x%x
-12   Dma_Setup                        Pipe=%u, Dev=%u, Ep=%u, Cfg=0x%x, Inrq=%u
+12   Dma_Setup                        Pipe=%u, Dev=%u, Ep=%u, Cfg=0x%x
 13   Dma_Pipe_Int                     Pipe=%u, Dev=%u, Ep=%u
 14   Xfer_complete                    Dev=%u, Ep=%u, Len=%u, Res=%u, Isr=%u
 15   Pipe_Status                      Pipe=%u, Stat=0x%x, Mask=0x%x

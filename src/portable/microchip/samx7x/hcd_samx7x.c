@@ -505,7 +505,7 @@ static bool hw_handle_dma_int(uint8_t rhport)
     }
 
     SEGGER_SYSVIEW_RecordU32x5(10 + TinyUSB.EventOffset, pipe, channel, USB_REG->HSTDMA[channel].HSTDMASTATUS, USB_REG->HSTDMA[channel].HSTDMACONTROL, USB_REG->HSTDMA[channel].HSTDMAADDRESS);
-
+    SEGGER_SYSVIEW_RecordU32x3(15 + TinyUSB.EventOffset, pipe, USB_REG->HSTPIPISR[pipe], USB_REG->HSTPIPIMR[pipe]);
 
     uint8_t dev_addr = hw_pipe_get_dev_addr(rhport, pipe);
     uint8_t ep_addr = hw_pipe_get_ep_addr(rhport, pipe);
