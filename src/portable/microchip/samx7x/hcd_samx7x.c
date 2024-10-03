@@ -1039,8 +1039,8 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
     else
     {
       hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
-      hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_TXOUTES);
       hw_pipe_prepare_out(rhport, pipe);
+      hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_TXOUTES);
     }
   }
   else
