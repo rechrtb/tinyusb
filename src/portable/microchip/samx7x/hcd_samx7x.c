@@ -308,6 +308,88 @@ static bool hw_pipe_fifo_copy_out(uint8_t rhport, uint8_t pipe)
   return !next;
 }
 
+
+void hw_pipe_dma_xfer(uint8_t rhport, uint8_t pipe, bool in)
+{
+  uint8_t *buf = pipe_xfers[pipe].buffer + pipe_xfers[pipe].done;
+  uint16_t pipe_size = hw_pipe_get_size(rhport, pipe);
+
+  uint32_t dma_ctrl = USBHS_HSTDMACONTROL_BUFF_LENGTH(pipe_xfers[pipe].queued);
+
+  if (in)
+  {
+    hw_dcache_invalidate_prepare(buf, pipe_xfers[pipe].queued);
+    if (pipe_xfers[pipe].queued <= pipe_size)
+    {
+      // Enable short packet reception
+      dma_ctrl |= HSTDMACONTROL_END_TR_IT | HSTDMACONTROL_END_TR_EN;
+    }
+  }
+  else
+  {
+    hw_dcache_flush(buf, pipe_xfers[pipe].queued);
+    if (pipe_xfers[pipe].queued % pipe_size != 0)
+    {
+      // Enable short packet option
+      dma_ctrl |= HSTDMACONTROL_END_B_EN;
+    }
+  }
+
+  uint8_t channel = pipe - 1;
+  USB_REG->HSTDMA[channel].HSTDMAADDRESS = (uint32_t)(buf);
+  dma_ctrl |= HSTDMACONTROL_CHANN_ENB;
+
+  SEGGER_SYSVIEW_RecordU32x2(12 + TinyUSB.EventOffset, pipe, dma_ctrl);
+  SEGGER_SYSVIEW_RecordU32x3(15 + TinyUSB.EventOffset, pipe, USB_REG->HSTPIPISR[pipe], USB_REG->HSTPIPIMR[pipe]);
+
+  uint32_t flags = 0;
+  hw_enter_critical(&flags);
+  if (!(USB_REG->HSTDMA[channel].HSTDMASTATUS & HSTDMASTATUS_END_TR_ST))
+  {
+    USB_REG->HSTDMA[channel].HSTDMACONTROL = dma_ctrl;
+    if (in)
+    {
+      hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_RXINIC);
+      hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_RXINES);
+    }
+    else
+    {
+      hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
+      hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_TXOUTES);
+    }
+    hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
+    hw_exit_critical(&flags);
+    return;
+  }
+  hw_exit_critical(&flags);
+  TU_ASSERT(false, );
+  return;
+}
+
+static void hw_pipe_prepare_out(uint8_t rhport, uint8_t pipe)
+{
+  pipe_xfers[pipe].done += pipe_xfers[pipe].queued;
+
+  uint32_t remain = pipe_xfers[pipe].total - pipe_xfers[pipe].done;
+  uint16_t pipe_size = hw_pipe_get_size(rhport, pipe);
+
+  pipe_xfers[pipe].queued = remain < pipe_size ? remain : pipe_size;
+
+  if (pipe_xfers[pipe].queued)
+  {
+    if (pipe_xfers[pipe].dma)
+    {
+      hw_pipe_dma_xfer(rhport, pipe, false);
+    }
+    else
+    {
+      uint8_t *buf = pipe_xfers[pipe].buffer + pipe_xfers[pipe].done;
+      uint8_t *dst = PEP_GET_FIFO_PTR(pipe, 8);
+      memcpy(dst, buf, pipe_xfers[pipe].queued);
+    }
+  }
+}
+
 static bool hw_pipe_fifo_copy_in(uint8_t rhport, uint8_t pipe)
 {
   uint32_t recieved = hw_pipe_bytes(rhport, pipe);
@@ -327,6 +409,30 @@ static bool hw_pipe_fifo_copy_in(uint8_t rhport, uint8_t pipe)
   return pipe_xfers[pipe].done >= pipe_xfers[pipe].total || recieved < hw_pipe_get_size(rhport, pipe);
 }
 
+static void hw_pipe_copy_in(uint8_t rhport, uint8_t pipe)
+{
+  pipe_xfers[pipe].done += pipe_xfers[pipe].queued;
+
+  uint32_t remain = pipe_xfers[pipe].total - pipe_xfers[pipe].done;
+  uint16_t pipe_size = hw_pipe_get_size(rhport, pipe);
+
+  pipe_xfers[pipe].queued = remain < pipe_size ? remain : pipe_size;
+
+  uint8_t *buf = pipe_xfers[pipe].buffer + pipe_xfers[pipe].done;
+
+  if (pipe_xfers[pipe].queued)
+  {
+    if (pipe_xfers[pipe].dma)
+    {
+      hw_pipe_dma_xfer(rhport, pipe, true);
+    }
+    else
+    {
+      uint8_t *src = PEP_GET_FIFO_PTR(pipe, 8);
+      memcpy(buf, src, pipe_xfers[pipe].queued);
+    }
+  }
+}
 static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_addr, uint8_t ep_addr)
 {
 
