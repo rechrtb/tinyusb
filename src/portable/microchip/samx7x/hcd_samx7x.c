@@ -955,9 +955,10 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
   pipe_xfers[pipe].done = 0;
   pipe_xfers[pipe].queued = 0;
 
+  bool in = ep_addr & TUSB_DIR_IN_MASK;
+
   // Use DMA for non-ZLP out transfers on supported, non-control pipes.
-  pipe_xfers[pipe].dma = (pipe_xfers[pipe].total || (ep_addr & TUSB_DIR_IN_MASK))
-                         && EP_DMA_SUPPORT(pipe) &&
+  pipe_xfers[pipe].dma = (pipe_xfers[pipe].total || in) && EP_DMA_SUPPORT(pipe) &&
                          hw_pipe_get_type(rhport, pipe) != TUSB_XFER_CONTROL;
 
   SEGGER_SYSVIEW_RecordU32x6(6 + TinyUSB.EventOffset, dev_addr, ep_addr, pipe, (uint32_t)buffer, buflen, pipe_xfers[pipe].dma);
@@ -971,17 +972,14 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t *b
   {
     SEGGER_SYSVIEW_RecordU32x3(15 + TinyUSB.EventOffset, pipe, USB_REG->HSTPIPISR[pipe], USB_REG->HSTPIPIMR[pipe]);
 
-    bool in = ep_addr & TUSB_DIR_IN_MASK;
-
     USB_REG->HSTPIPCFG[pipe] &= ~HSTPIPCFG_AUTOSW;
-
     if (hw_pipe_get_type(rhport, pipe) == TUSB_XFER_CONTROL)
     {
       hw_pipe_ctrl_xfer(rhport, pipe, in);
     }
     else
     {
-      if (ep_addr & TUSB_DIR_IN_MASK)
+      if (in)
       {
         USB_REG->HSTPIPINRQ[pipe] |= HSTPIPINRQ_INMODE;
         hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_RXINES);
