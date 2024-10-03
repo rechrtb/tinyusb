@@ -925,6 +925,7 @@ bool hw_prepare_dma_xfer(uint8_t rhport, uint8_t pipe, uint8_t ep_addr, uint8_t 
     dma_ctrl |= HSTDMACONTROL_END_BUFFIT | HSTDMACONTROL_CHANN_ENB;
 
     SEGGER_SYSVIEW_RecordU32x4(12 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr, dma_ctrl);
+    SEGGER_SYSVIEW_RecordU32x3(15 + TinyUSB.EventOffset, pipe, USB_REG->HSTPIPISR[pipe], USB_REG->HSTPIPIMR[pipe]);
 
     uint32_t flags = 0;
     hw_enter_critical(&flags);
