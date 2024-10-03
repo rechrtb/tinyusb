@@ -110,7 +110,8 @@ CFLAGS += \
   -Wunused \
   -Wredundant-decls \
   -Wno-error=float-equal \
-  -Wno-error=shift-count-overflow
+  -Wno-error=shift-count-overflow \
+  -Wno-error=unused-function
   #-Wcast-qual \
 
 # conversion is too strict for most mcu driver, may be disable sign/int/arith-conversion

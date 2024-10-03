@@ -458,10 +458,11 @@ static bool hw_handle_fifo_pipe_int(uint8_t rhport, uint8_t pipe, uint8_t dev_ad
     SEGGER_SYSVIEW_RecordU32x4(9 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr, false);
     // Clear transmit interrupt
     hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
-    bool done = hw_pipe_fifo_copy_out(rhport, pipe);
+    hw_pipe_prepare_out(rhport, pipe);
 
-    if (done)
+    if (!pipe_xfers[pipe].queued)
     {
+      hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_PFREEZES);
       hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_TXOUTEC);
       hcd_event_xfer_complete(dev_addr, ep_addr, pipe_xfers[pipe].done, XFER_RESULT_SUCCESS, true);
     }
@@ -1033,11 +1034,18 @@ bool hw_prepare_dma_xfer(uint8_t rhport, uint8_t pipe, uint8_t ep_addr, uint8_t 
     SEGGER_SYSVIEW_RecordU32x4(12 + TinyUSB.EventOffset, pipe, dev_addr, ep_addr, dma_ctrl);
     SEGGER_SYSVIEW_RecordU32x3(15 + TinyUSB.EventOffset, pipe, USB_REG->HSTPIPISR[pipe], USB_REG->HSTPIPIMR[pipe]);
 
+    pipe_xfers[pipe].queued = next;
+
     uint32_t flags = 0;
     hw_enter_critical(&flags);
     if (!(USB_REG->HSTDMA[channel].HSTDMASTATUS & HSTDMASTATUS_END_TR_ST))
     {
-      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_NBUSYBKEC | HSTPIPIDR_PFREEZEC);
+      if (!(ep_addr & TUSB_DIR_IN_MASK))
+      {
+        hw_pipe_clear_reg(rhport, pipe, HSTPIPICR_TXOUTIC);
+        hw_pipe_enable_reg(rhport, pipe, HSTPIPIER_TXOUTES);
+      }
+      hw_pipe_disable_reg(rhport, pipe, HSTPIPIDR_PFREEZEC);
       USB_REG->HSTDMA[channel].HSTDMACONTROL = dma_ctrl;
     }
     hw_exit_critical(&flags);
