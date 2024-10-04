@@ -577,7 +577,7 @@ static bool hw_handle_dma_int(uint8_t rhport)
   {
     uint8_t channel = pipe - 1;
 
-    uint32_t stat = USB_REG->HSTDMA[channel].HSTDMASTATUS;
+    volatile uint32_t stat = USB_REG->HSTDMA[channel].HSTDMASTATUS;
     if (stat & HSTDMASTATUS_CHANN_ENB)
     {
       return true; // ignore EOT_STA interrupt
