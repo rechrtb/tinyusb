@@ -33,7 +33,7 @@
 #include "hal/include/hal_usart_async.h"
 #include "hal/include/hal_gpio.h"
 
-#include "SEGGER_SYSVIEW.h"
+// #include "SEGGER_SYSVIEW.h"
 
 //--------------------------------------------------------------------+
 // MACRO TYPEDEF CONSTANT ENUM DECLARATION
@@ -59,14 +59,14 @@ static void tx_cb_EDBG_COM(const struct usart_async_descriptor *const io_descr)
   uart_busy = false;
 }
 
-SEGGER_SYSVIEW_MODULE TinyUSB =
-{
-  "M=TinyUSB",
-  30, // NumEvents
-  0, // EventOffset, Set by SEGGER_SYSVIEW_RegisterModule()
-  NULL, // pfSendModuleDesc, NULL: No additional module description
-  NULL, // pNext, Set by SEGGER_SYSVIEW_RegisterModule()
-};
+// SEGGER_SYSVIEW_MODULE TinyUSB =
+// {
+//   "M=TinyUSB",
+//   30, // NumEvents
+//   0, // EventOffset, Set by SEGGER_SYSVIEW_RegisterModule()
+//   NULL, // pfSendModuleDesc, NULL: No additional module description
+//   NULL, // pNext, Set by SEGGER_SYSVIEW_RegisterModule()
+// };
 
 //------------- IMPLEMENTATION -------------//
 void board_init(void)
@@ -117,9 +117,9 @@ void board_init(void)
   gpio_set_pin_level(USB_HOST_POWER_PIN, true);
 # endif
 
-  SEGGER_SYSVIEW_Conf();
-  SEGGER_SYSVIEW_RegisterModule(&TinyUSB);
-  SEGGER_SYSVIEW_Start();
+  // SEGGER_SYSVIEW_Conf();
+  // SEGGER_SYSVIEW_RegisterModule(&TinyUSB);
+  // SEGGER_SYSVIEW_Start();
 }
 
 //--------------------------------------------------------------------+

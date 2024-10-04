@@ -8,8 +8,8 @@ BUILD := _build/$(BOARD)
 PROJECT := $(notdir $(CURDIR))
 BIN := $(TOP)/_bin/$(BOARD)/$(notdir $(CURDIR))
 
-DEBUG := 1
-LOGGER := sysview
+# DEBUG := 1
+# LOGGER := sysview
 
 # Handy check parameter function
 check_defined = \

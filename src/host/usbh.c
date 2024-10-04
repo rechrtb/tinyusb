@@ -35,9 +35,9 @@
 #include "hub.h"
 
 
-#include "SEGGER_SYSVIEW.h"
+//#include "SEGGER_SYSVIEW.h"
 
-// extern SEGGER_SYSVIEW_MODULE TinyUSBModule;
+// extern //SEGGER_SYSVIEW_MODULE TinyUSBModule;
 
 //--------------------------------------------------------------------+
 // USBH Configuration
@@ -389,7 +389,7 @@ bool tuh_init(uint8_t controller_id)
 }
 
 
-extern SEGGER_SYSVIEW_MODULE TinyUSB;
+extern //SEGGER_SYSVIEW_MODULE TinyUSB;
 
 /* USB Host Driver task
  * This top level thread manages all host controller event and delegates events to class-specific drivers.
@@ -428,7 +428,7 @@ void tuh_task_ext(uint32_t timeout_ms, bool in_isr)
         // TODO due to the shared _usbh_ctrl_buf, we must complete enumerating
         // one device before enumerating another one.
         TU_LOG2("[%u:] USBH DEVICE ATTACH\r\n", event.rhport);
-        SEGGER_SYSVIEW_RecordU32(1 + TinyUSB.EventOffset, event.rhport);
+        //SEGGER_SYSVIEW_RecordU32(1 + TinyUSB.EventOffset, event.rhport);
         enum_new_device(&event);
       break;
 
@@ -452,7 +452,7 @@ void tuh_task_ext(uint32_t timeout_ms, bool in_isr)
         uint8_t const epnum   = tu_edpt_number(ep_addr);
         uint8_t const ep_dir  = tu_edpt_dir(ep_addr);
 
-        SEGGER_SYSVIEW_RecordU32x4(2 + TinyUSB.EventOffset, event.dev_addr, event.xfer_complete.ep_addr, event.xfer_complete.result, event.xfer_complete.len);
+        //SEGGER_SYSVIEW_RecordU32x4(2 + TinyUSB.EventOffset, event.dev_addr, event.xfer_complete.ep_addr, event.xfer_complete.result, event.xfer_complete.len);
         TU_LOG2("on EP %02X with %u bytes\r\n", ep_addr, (unsigned int) event.xfer_complete.len);
 
         if (event.dev_addr == 0)
@@ -876,7 +876,7 @@ void hcd_devtree_get_info(uint8_t dev_addr, hcd_devtree_info_t* devtree_info)
 
 TU_ATTR_FAST_FUNC void hcd_event_handler(hcd_event_t const* event, bool in_isr)
 {
-  SEGGER_SYSVIEW_RecordU32(4 + TinyUSB.EventOffset, event->event_id);
+  //SEGGER_SYSVIEW_RecordU32(4 + TinyUSB.EventOffset, event->event_id);
   switch (event->event_id)
   {
     default:
@@ -1219,7 +1219,7 @@ static void process_enumeration(tuh_xfer_t* xfer)
   uint8_t const daddr = xfer->daddr;
   uintptr_t const state = xfer->user_data;
 
-  SEGGER_SYSVIEW_RecordU32(3 + TinyUSB.EventOffset, state);
+  //SEGGER_SYSVIEW_RecordU32(3 + TinyUSB.EventOffset, state);
 
   switch(state)
   {
